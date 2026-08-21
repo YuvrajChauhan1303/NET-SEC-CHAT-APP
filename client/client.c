@@ -5,6 +5,11 @@
 #include <arpa/inet.h>
 #include <unistd.h>
 
+void send_command(int s, char *buf)
+{
+    write(s, buf, strlen(buf));
+}
+
 int main()
 {
     int s;
@@ -19,15 +24,57 @@ int main()
 
     connect(s, (struct sockaddr *)&addr, sizeof(addr));
 
-    while (1)
-    {
-        scanf("%s", buf);
-        send(s, buf, strlen(buf), 0);
+    int n = read(s, buf, sizeof(buf) - 1);
 
-        int n = read(s, buf, sizeof(buf));
-        if (n > 0)
-            printf("Server: %.*s\n", n, buf);
+    if (n <= 0)
+        return 1;
+
+    buf[n] = '\0';
+
+    printf("Server: %s\n", buf);
+
+    fgets(buf, sizeof(buf), stdin);
+    buf[strlen(buf) - 1] = '\0';
+
+    send_command(s, buf);
+
+    n = read(s, buf, sizeof(buf) - 1);
+
+    if (n <= 0)
+        return 1;
+
+    buf[n] = '\0';
+
+    printf("Server: %s", buf);
+
+    if (fork() == 0)
+    {
+
+        while (1)
+        {
+            n = read(s, buf, sizeof(buf) - 1);
+
+            if (n <= 0)
+                break;
+
+            buf[n] = '\0';
+
+            printf("Server: %s\n", buf);
+        }
+    }
+    else
+    {
+
+        while (1)
+        {
+            fgets(buf, sizeof(buf), stdin);
+            buf[strlen(buf) - 1] = '\0';
+
+            send_command(s, buf);
+        }
     }
 
     close(s);
+
+    return 0;
 }

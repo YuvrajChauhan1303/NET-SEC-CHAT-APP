@@ -3,6 +3,12 @@
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <unistd.h>
+#include <sys/mman.h>
+
+#include "services.h"
+
+char (*users)[MAX_USERNAME];
+int *user_count;
 
 int main()
 {
@@ -19,19 +25,65 @@ int main()
     bind(s, (struct sockaddr *)&addr, sizeof(addr));
     listen(s, 1);
 
-    c = accept(s, NULL, NULL);
+    users = mmap(NULL,
+                 sizeof(char[MAX_USERS][MAX_USERNAME]),
+                 PROT_READ | PROT_WRITE,
+                 MAP_SHARED | MAP_ANONYMOUS,
+                 -1,
+                 0);
+
+    user_count = mmap(NULL,
+                      sizeof(int),
+                      PROT_READ | PROT_WRITE,
+                      MAP_SHARED | MAP_ANONYMOUS,
+                      -1,
+                      0);
+
+    *user_count = 0;
+
+    printf("Server Initialized. Listening for requests.\n\n");
 
     while (1)
     {
-        int n = read(c, buf, sizeof(buf));
+        c = accept(s, NULL, NULL);
 
-        if (n > 0)
-            printf("Client: %.*s\n", n, buf);
+        if (fork() == 0)
+        {
+            close(s);
 
-        scanf("%s", buf);
-        send(c, buf, strlen(buf), 0);
+            register_client(c);
+
+            if (fork() == 0)
+            {
+
+                while (1)
+                {
+                    if (read_command(c, buf) == NULL)
+                        break;
+
+                    printf("Client: %s\n", buf);
+                }
+            }
+            else
+            {
+
+                while (1)
+                {
+                    fgets(buf, sizeof(buf), stdin);
+                    buf[strlen(buf) - 1] = '\0';
+
+                    send_command(c, buf);
+                }
+            }
+
+            close(c);
+            return 0;
+        }
+
+        close(c);
     }
 
-    close(c);
     close(s);
+
+    return 0;
 }
