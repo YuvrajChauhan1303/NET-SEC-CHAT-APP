@@ -19,8 +19,18 @@ void send_command(int c, char *buf);
 
 void service_who(int c);
 
+void get_chat_username(char *buf, char *username);
+
+int find_user(char *username);
+
+void set_chat(int user_index, int target_index);
+
 void service_chat(int user_index, char *buf);
 
 void service_message(int user_index, char *buf);
 
 void service_quit(int c, char *username);
+
+void get_username(char *buf, char *username);
+
+void service_chat_username(int user_index, char *username);

@@ -102,46 +102,77 @@ void service_who(int c)
     write(c, response, strlen(response));
 }
 
+void get_chat_username(char *buf, char *username)
+{
+    int i = 6;
+    int j = 0;
+
+    while (buf[i] != ' ' && buf[i] != '\0')
+    {
+        username[j] = buf[i];
+
+        i++;
+        j++;
+    }
+
+    username[j] = '\0';
+}
+
+int find_user(char *username)
+{
+    for (int i = 0; i < user_count; i++)
+    {
+        if (!strcmp(users[i].username, username))
+            return i;
+    }
+
+    return -1;
+}
+
+void set_chat(int user_index, int target_index)
+{
+    strcpy(users[user_index].chat_with,
+           users[target_index].username);
+}
+
 void service_chat(int user_index, char *buf)
 {
     char target[MAX_USERNAME];
 
-    sscanf(buf, "/chat %s", target);
+    get_chat_username(buf, target);
 
-    for (int i = 0; i < user_count; i++)
+    int target_index = find_user(target);
+
+    if (target_index == -1)
     {
-        if (!strcmp(users[i].username, target))
-        {
-            strcpy(users[user_index].chat_with,
-                   target);
+        char response[200];
 
-            char response[200];
+        sprintf(response,
+                "User %s not found.\n",
+                target);
 
-            sprintf(response,
-                    "Now chatting with %s\n",
-                    target);
+        write(users[user_index].socket,
+              response,
+              strlen(response));
 
-            write(users[user_index].socket,
-                  response,
-                  strlen(response));
-
-            printf("[SERVER] %s is now chatting with %s\n",
-                   users[user_index].username,
-                   target);
-
-            return;
-        }
+        return;
     }
+
+    set_chat(user_index, target_index);
 
     char response[200];
 
     sprintf(response,
-            "User %s not found.\n",
+            "Now chatting with %s\n",
             target);
 
     write(users[user_index].socket,
           response,
           strlen(response));
+
+    printf("[SERVER] %s is now chatting with %s\n",
+           users[user_index].username,
+           target);
 }
 
 void service_message(int user_index, char *buf)
@@ -182,6 +213,7 @@ void service_message(int user_index, char *buf)
             return;
         }
     }
+
     char response[] =
         "The selected user is no longer connected.\n";
 
@@ -221,4 +253,49 @@ void service_quit(int c, char *username)
     }
 
     close(c);
+}
+
+void get_username(char *buf, char *username)
+{
+    int i = 1;
+    int j = 0;
+
+    while (buf[i] != ' ' && buf[i] != '\0')
+    {
+        username[j] = buf[i];
+
+        i++;
+        j++;
+    }
+
+    username[j] = '\0';
+}
+
+void service_chat_username(int user_index, char *username)
+{
+    int target_index = find_user(username);
+
+    if (target_index == -1)
+    {
+        char response[200];
+
+        sprintf(response,
+                "User %s not found.\n",
+                username);
+
+        write(users[user_index].socket,
+              response,
+              strlen(response));
+
+        printf("[SERVER] User %s not found\n",
+               username);
+
+        return;
+    }
+
+    set_chat(user_index, target_index);
+
+    printf("[SERVER] %s is now chatting with %s\n",
+           users[user_index].username,
+           username);
 }

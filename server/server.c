@@ -31,100 +31,108 @@ int main()
     printf("[SERVER] Server Initialized. Listening for requests.\n\n");
 
     while (1)
+{
+    fd_set readfds;
+
+    FD_ZERO(&readfds);
+
+    FD_SET(s, &readfds);
+
+    int max_fd = s;
+
+    for (int i = 0; i < user_count; i++)
     {
-        fd_set readfds;
+        FD_SET(users[i].socket, &readfds);
 
-        FD_ZERO(&readfds);
+        if (users[i].socket > max_fd)
+            max_fd = users[i].socket;
+    }
 
-        FD_SET(s, &readfds);
+    select(max_fd + 1, &readfds, NULL, NULL, NULL);
 
-        int max_fd = s;
+    if (FD_ISSET(s, &readfds))
+    {
+        c = accept(s, NULL, NULL);
 
-       
-        for (int i = 0; i < user_count; i++)
+        printf("[SERVER] New connection. Socket: %d\n", c);
+
+        if (register_client(c))
         {
-            FD_SET(users[i].socket, &readfds);
-
-            if (users[i].socket > max_fd)
-                max_fd = users[i].socket;
+            printf("[SERVER] Registration complete.\n");
         }
+    }
 
-       
-        select(max_fd + 1, &readfds, NULL, NULL, NULL);
+    for (int i = 0; i < user_count; i++)
+    {
+        int client_socket = users[i].socket;
 
-        
-        if (FD_ISSET(s, &readfds))
+        if (FD_ISSET(client_socket, &readfds))
         {
-            c = accept(s, NULL, NULL);
+            int n = read(client_socket,
+                         buf,
+                         sizeof(buf) - 1);
 
-            printf("[SERVER] New connection. Socket: %d\n", c);
-
-            if (register_client(c))
+            if (n <= 0)
             {
-                printf("[SERVER] Registration complete.\n");
+                printf("[SERVER] %s disconnected.\n",
+                       users[i].username);
+
+                service_quit(client_socket,
+                             users[i].username);
+
+                i--;
+
+                continue;
             }
-        }
 
-        
-        for (int i = 0; i < user_count; i++)
-        {
-            int client_socket = users[i].socket;
+            buf[n] = '\0';
 
-            if (FD_ISSET(client_socket, &readfds))
+            printf("[CLIENT %s] %s\n",
+                   users[i].username,
+                   buf);
+
+            if (!strcmp(buf, "/who"))
             {
-                int n = read(client_socket, buf, sizeof(buf) - 1);
+                printf("[SERVER] %s requested /who\n",
+                       users[i].username);
 
+                service_who(client_socket);
+            }
 
-                if (n <= 0)
-                {
-                    printf("[SERVER] %s disconnected.\n",
-                           users[i].username);
+            else if (!strncmp(buf, "/chat ", 6))
+            {
+                service_chat(i, buf);
+            }
 
-                    service_quit(client_socket,
-                                 users[i].username);
+            else if (!strcmp(buf, "/quit"))
+            {
+                service_quit(client_socket,
+                             users[i].username);
 
-                    i--;
+                i--;
 
-                    continue;
-                }
+                continue;
+            }
 
-                buf[n] = '\0';
+            else if (buf[0] == '@')
+            {
+                char username[MAX_USERNAME];
 
-                printf("[CLIENT %s] %s\n",
-                       users[i].username,
-                       buf);
+                get_username(buf, username);
 
-               
-                if (!strcmp(buf, "/who"))
-                {
-                    printf("[SERVER] %s requested /who\n",
-                        users[i].username);
+                service_chat_username(i, username);
 
-                    service_who(client_socket);
-                }
+                char *msg = buf + strlen(username) + 2;
+                service_message(i, msg);
+            }
 
-                else if (!strncmp(buf, "/chat ", 6))
-                {
-                    service_chat(i, buf);
-                }
-
-                else if (!strcmp(buf, "/quit"))
-                {
-                    service_quit(client_socket,
-                                users[i].username);
-
-                    i--;
-
-                    continue;
-                }
-
-                else
-                {
-                    service_message(i, buf);
-                }
+            else
+            {
+                service_message(i, buf);
             }
         }
     }
+}
 
     close(s);
 
