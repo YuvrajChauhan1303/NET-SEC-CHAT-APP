@@ -55,7 +55,8 @@ int main()
 
             if (fork() == 0)
             {
-
+                // read inputs from users.. the /chat, /quit, /who, etc... if no commands, send ,message to selected user...
+                // means by default.. only server gets message.. does not relay them unless a user is selected.
                 while (1)
                 {
                     if (read_command(c, buf) == NULL)
@@ -66,7 +67,7 @@ int main()
             }
             else
             {
-
+                // server can send msg here (temp)
                 while (1)
                 {
                     fgets(buf, sizeof(buf), stdin);
