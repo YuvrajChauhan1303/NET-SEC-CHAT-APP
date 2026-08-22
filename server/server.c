@@ -62,6 +62,7 @@ int main()
                 // means by default.. only server gets message.. does not relay them unless a user is selected.
                 while (1)
                 {
+
                     if (read_command(c, buf) == NULL)
                         break;
 
@@ -70,10 +71,16 @@ int main()
                     if (!strcmp(buf, "/quit"))
                     {
                         service_quit(c, username);
-                        break;
                     }
 
-                    service_command(int c, buf);
+                    if (!strcmp(buf, "/who"))
+                    {
+                        service_who(c);
+                    }
+
+                    char response[1000];
+
+                    service_command(c, buf, response);
                 }
             }
             else

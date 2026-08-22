@@ -59,7 +59,7 @@ int main()
 
             buf[n] = '\0';
 
-            printf("Server: %s\n", buf);
+            printf("Server:\n\n %s\n", buf);
         }
     }
     else

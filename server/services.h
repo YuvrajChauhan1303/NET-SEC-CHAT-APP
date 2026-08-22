@@ -12,3 +12,4 @@ void send_command(int c, char *buf);
 int service_command(int c, char *buf, char *response);
 
 void service_quit(int c, char *username);
+void service_who(int c);

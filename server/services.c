@@ -135,3 +135,20 @@ void service_quit(int c, char *username)
 
     close(c);
 }
+
+void service_who(int c)
+{
+    char response[1000];
+
+    response[0] = '\0';
+
+    for (int i = 0; i < *user_count; i++)
+    {
+        sprintf(response + strlen(response),
+                "%d.\t%s\n",
+                i + 1,
+                users[i]);
+    }
+
+    write(c, response, strlen(response));
+}

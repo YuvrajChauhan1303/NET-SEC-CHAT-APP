@@ -6,6 +6,6 @@
 - [ ] maintaining logs
 - [x] implement `quit` functionality.
 - [x] user quit handling (user may leave without order).
-- [ ] display online users `\who`
+- [x] display online users `\who`
 - [ ] message forwarding
 - [ ] chat selection `@username <msg>`
