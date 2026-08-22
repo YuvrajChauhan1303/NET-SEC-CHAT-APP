@@ -49,9 +49,12 @@ int main()
 
         if (fork() == 0)
         {
+            // no other requests on THIS child
             close(s);
 
-            register_client(c);
+            char username[MAX_USERNAME];
+
+            register_client(c, username);
 
             if (fork() == 0)
             {
@@ -63,6 +66,14 @@ int main()
                         break;
 
                     printf("Client: %s\n", buf);
+
+                    if (!strcmp(buf, "/quit"))
+                    {
+                        service_quit(c, username);
+                        break;
+                    }
+
+                    service_command(int c, buf);
                 }
             }
             else

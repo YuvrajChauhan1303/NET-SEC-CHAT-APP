@@ -20,6 +20,7 @@ int main()
 
     addr.sin_family = AF_INET;
     addr.sin_port = htons(8080);
+
     inet_pton(AF_INET, "127.0.0.1", &addr.sin_addr);
 
     connect(s, (struct sockaddr *)&addr, sizeof(addr));
@@ -49,7 +50,6 @@ int main()
 
     if (fork() == 0)
     {
-
         while (1)
         {
             n = read(s, buf, sizeof(buf) - 1);
@@ -64,13 +64,18 @@ int main()
     }
     else
     {
-
         while (1)
         {
             fgets(buf, sizeof(buf), stdin);
             buf[strlen(buf) - 1] = '\0';
 
             send_command(s, buf);
+
+            if (!strcmp(buf, "/quit"))
+            {
+                close(s);
+                return 0;
+            }
         }
     }
 

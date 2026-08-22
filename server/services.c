@@ -4,28 +4,28 @@
 
 #include "services.h"
 
-void register_client(int c)
+void register_client(int c, char *username)
 {
-    write(c, "Enter Name:", 11);
 
-    char buf[1000];
+    char response[1000];
 
-    int n = read(c, buf, sizeof(buf) - 1);
+    sprintf(response, "Enter Name:\t");
+    write(c, response, strlen(response));
+
+    int n = read(c, username, MAX_USERNAME - 1);
 
     if (n <= 0)
         return;
 
-    buf[n] = '\0';
+    username[n] = '\0';
 
-    strcpy(users[*user_count], buf);
+    strcpy(users[*user_count], username);
 
     printf("Registered %s with socket %d\n",
            users[*user_count],
            c);
 
     (*user_count)++;
-
-    char response[1000];
 
     sprintf(response,
             "User Registration Successful.\n"
@@ -57,4 +57,81 @@ char *read_command(int c, char *buf)
 void send_command(int c, char *buf)
 {
     write(c, buf, strlen(buf));
+}
+
+// if 1 -> forward message to selected user
+// if 2 -> select a user, respond to main with selected user
+
+int service_command(int c, char *buf, char *response)
+{
+    int chat_flag = 0;
+    int select_flag = 0;
+
+    char command[20];
+    int i = 0;
+
+    if (buf[0] == '/')
+    {
+        while (buf[i] != ' ' && buf[i] != '\0')
+        {
+            command[i] = buf[i];
+            i++;
+        }
+
+        command[i] = '\0';
+
+        if (!strcmp(command, "/chat"))
+            chat_flag = 1;
+
+        return 1;
+    }
+
+    else if (buf[0] == '@')
+    {
+        i = 1;
+
+        char username[50];
+        int j = 0;
+
+        while (buf[i] != ' ' && buf[i] != '\0')
+        {
+            username[j] = buf[i];
+            j++;
+            i++;
+        }
+
+        username[j] = '\0';
+
+        strcpy(response, username);
+
+        select_flag = 1;
+
+        return 2;
+    }
+
+    return 0;
+}
+
+void service_quit(int c, char *username)
+{
+    int i;
+
+    printf("Removing user: %s\n", username);
+
+    for (i = 0; i < *user_count; i++)
+    {
+        if (!strcmp(users[i], username))
+        {
+            for (; i < *user_count - 1; i++)
+                strcpy(users[i], users[i + 1]);
+
+            (*user_count)--;
+
+            printf("User removed. Count: %d\n", *user_count);
+
+            break;
+        }
+    }
+
+    close(c);
 }
