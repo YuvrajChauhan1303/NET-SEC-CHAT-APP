@@ -73,7 +73,7 @@ int main(int argc, char *argv[])
 
             buf[n] = '\0';
 
-            printf("Server:\n\n %s\n", buf);
+            printf("Server:\n\n%s\n", buf);
         }
     }
     else

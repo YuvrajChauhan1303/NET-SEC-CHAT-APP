@@ -1,15 +1,26 @@
 #define MAX_USERS 1000
 #define MAX_USERNAME 20
 
-extern char (*users)[MAX_USERNAME];
-extern int *user_count;
+struct User
+{
+    char username[MAX_USERNAME];
+    int socket;
+    char chat_with[MAX_USERNAME];
+};
 
-void register_client(int c, char *username);
-void itoa(int num, char *buf);
+extern struct User users[MAX_USERS];
+extern int user_count;
+
+int register_client(int c);
+
 char *read_command(int c, char *buf);
+
 void send_command(int c, char *buf);
 
-int service_command(int c, char *buf, char *response);
+void service_who(int c);
+
+void service_chat(int user_index, char *buf);
+
+void service_message(int user_index, char *buf);
 
 void service_quit(int c, char *username);
-void service_who(int c);

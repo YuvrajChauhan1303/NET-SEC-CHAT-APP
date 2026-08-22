@@ -3,17 +3,19 @@
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <unistd.h>
-#include <sys/mman.h>
+#include <sys/select.h>
 
 #include "services.h"
 
-char (*users)[MAX_USERNAME];
-int *user_count;
+struct User users[MAX_USERS];
+int user_count = 0;
 
 int main()
 {
     int s, c;
+
     struct sockaddr_in addr = {0};
+
     char buf[100];
 
     s = socket(AF_INET, SOCK_STREAM, 0);
@@ -23,83 +25,105 @@ int main()
     addr.sin_addr.s_addr = INADDR_ANY;
 
     bind(s, (struct sockaddr *)&addr, sizeof(addr));
-    listen(s, 1);
 
-    users = mmap(NULL,
-                 sizeof(char[MAX_USERS][MAX_USERNAME]),
-                 PROT_READ | PROT_WRITE,
-                 MAP_SHARED | MAP_ANONYMOUS,
-                 -1,
-                 0);
+    listen(s, 10);
 
-    user_count = mmap(NULL,
-                      sizeof(int),
-                      PROT_READ | PROT_WRITE,
-                      MAP_SHARED | MAP_ANONYMOUS,
-                      -1,
-                      0);
-
-    *user_count = 0;
-
-    printf("Server Initialized. Listening for requests.\n\n");
+    printf("[SERVER] Server Initialized. Listening for requests.\n\n");
 
     while (1)
     {
-        c = accept(s, NULL, NULL);
+        fd_set readfds;
 
-        if (fork() == 0)
+        FD_ZERO(&readfds);
+
+        FD_SET(s, &readfds);
+
+        int max_fd = s;
+
+       
+        for (int i = 0; i < user_count; i++)
         {
-            // no other requests on THIS child
-            close(s);
+            FD_SET(users[i].socket, &readfds);
 
-            char username[MAX_USERNAME];
-
-            register_client(c, username);
-
-            if (fork() == 0)
-            {
-                // read inputs from users.. the /chat, /quit, /who, etc... if no commands, send ,message to selected user...
-                // means by default.. only server gets message.. does not relay them unless a user is selected.
-                while (1)
-                {
-
-                    if (read_command(c, buf) == NULL)
-                        break;
-
-                    printf("Client: %s\n", buf);
-
-                    if (!strcmp(buf, "/quit"))
-                    {
-                        service_quit(c, username);
-                    }
-
-                    if (!strcmp(buf, "/who"))
-                    {
-                        service_who(c);
-                    }
-
-                    char response[1000];
-
-                    service_command(c, buf, response);
-                }
-            }
-            else
-            {
-                // server can send msg here (temp)
-                while (1)
-                {
-                    fgets(buf, sizeof(buf), stdin);
-                    buf[strlen(buf) - 1] = '\0';
-
-                    send_command(c, buf);
-                }
-            }
-
-            close(c);
-            return 0;
+            if (users[i].socket > max_fd)
+                max_fd = users[i].socket;
         }
 
-        close(c);
+       
+        select(max_fd + 1, &readfds, NULL, NULL, NULL);
+
+        
+        if (FD_ISSET(s, &readfds))
+        {
+            c = accept(s, NULL, NULL);
+
+            printf("[SERVER] New connection. Socket: %d\n", c);
+
+            if (register_client(c))
+            {
+                printf("[SERVER] Registration complete.\n");
+            }
+        }
+
+        
+        for (int i = 0; i < user_count; i++)
+        {
+            int client_socket = users[i].socket;
+
+            if (FD_ISSET(client_socket, &readfds))
+            {
+                int n = read(client_socket, buf, sizeof(buf) - 1);
+
+
+                if (n <= 0)
+                {
+                    printf("[SERVER] %s disconnected.\n",
+                           users[i].username);
+
+                    service_quit(client_socket,
+                                 users[i].username);
+
+                    i--;
+
+                    continue;
+                }
+
+                buf[n] = '\0';
+
+                printf("[CLIENT %s] %s\n",
+                       users[i].username,
+                       buf);
+
+               
+                if (!strcmp(buf, "/who"))
+                {
+                    printf("[SERVER] %s requested /who\n",
+                        users[i].username);
+
+                    service_who(client_socket);
+                }
+
+                else if (!strncmp(buf, "/chat ", 6))
+                {
+                    service_chat(i, buf);
+                }
+
+                else if (!strcmp(buf, "/quit"))
+                {
+                    service_quit(client_socket,
+                                users[i].username);
+
+                    i--;
+
+                    continue;
+                }
+
+                else
+                {
+                    service_message(i, buf);
+                }
+            }
+        }
     }
 
     close(s);
