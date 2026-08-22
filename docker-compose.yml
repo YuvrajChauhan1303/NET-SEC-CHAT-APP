@@ -1,0 +1,14 @@
+services:
+  server:
+    image: chat-server
+    container_name: server
+    ports:
+      - "8080:8080"
+    networks:
+      - chat-network
+    stdin_open: true
+    tty: true
+
+networks:
+  chat-network:
+    driver: bridge

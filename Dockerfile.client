@@ -1,0 +1,11 @@
+FROM ubuntu:24.04
+
+RUN apt update && apt install -y gcc
+
+WORKDIR /app
+
+COPY client/ /app/client/
+
+RUN gcc client/client.c -o client/client
+
+CMD ["./client/client", "server", "8080"]

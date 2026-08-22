@@ -4,26 +4,40 @@
 #include <netinet/in.h>
 #include <arpa/inet.h>
 #include <unistd.h>
+#include <netdb.h>
 
 void send_command(int s, char *buf)
 {
     write(s, buf, strlen(buf));
 }
 
-int main()
+int main(int argc, char *argv[])
 {
     int s;
-    struct sockaddr_in addr = {0};
-    char buf[100];
+    struct addrinfo hints, *res;
 
-    s = socket(AF_INET, SOCK_STREAM, 0);
+    char *host = "127.0.0.1";
+    char *port = "8080";
 
-    addr.sin_family = AF_INET;
-    addr.sin_port = htons(8080);
+    if (argc >= 2)
+        host = argv[1];
 
-    inet_pton(AF_INET, "127.0.0.1", &addr.sin_addr);
+    if (argc >= 3)
+        port = argv[2];
 
-    connect(s, (struct sockaddr *)&addr, sizeof(addr));
+    memset(&hints, 0, sizeof(hints));
+    hints.ai_family = AF_INET;
+    hints.ai_socktype = SOCK_STREAM;
+
+    getaddrinfo(host, port, &hints, &res);
+
+    s = socket(res->ai_family, res->ai_socktype, res->ai_protocol);
+
+    connect(s, res->ai_addr, res->ai_addrlen);
+
+    freeaddrinfo(res);
+
+    char buf[1000];
 
     int n = read(s, buf, sizeof(buf) - 1);
 
