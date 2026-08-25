@@ -5,10 +5,10 @@
 #include <unistd.h>
 #include <sys/select.h>
 
+#include "users.h"
+#include "chat.h"
 #include "services.h"
 
-struct User users[MAX_USERS];
-int user_count = 0;
 
 int main()
 {
