@@ -1,108 +1,100 @@
 #include <stdio.h>
 #include <openssl/bn.h>
 
-void sq_mult(const BIGNUM *g, const BIGNUM *a, const BIGNUM *p, BIGNUM *share, BN_CTX *ctx)
+#include "dh.h"
+
+BIGNUM *MODP = NULL;
+BIGNUM *G = NULL;
+
+void init_dh_params(void)
+{
+    BN_hex2bn(&MODP,
+        "FFFFFFFFFFFFFFFFC90FDAA22168C234C4C6628B80DC1CD1"
+        "29024E088A67CC74020BBEA63B139B22514A08798E3404DD"
+        "EF9519B3CD3A431B302B0A6DF25F14374FE1356D6D51C245"
+        "E485B576625E7EC6F44C42E9A637ED6B0BFF5CB6F406B7ED"
+        "EE386BFB5A899FA5AE9F24117C4B1FE649286651ECE45B3D"
+        "C2007CB8A163BF0598DA48361C55D39A69163FA8FD24CF5F"
+        "83655D23DCA3AD961C62F356208552BB9ED529077096966D"
+        "670C354E4ABC9804F1746C08CA18217C32905E46E36CE3B"
+        "E39E772C180E86039B2783A2EC07A28FB5C55DF06F4C52C9"
+        "DE2BCBF6955817183995497CEA956AE515D2261898FA0510"
+        "15728E5A8AACAA68FFFFFFFFFFFFFFFF"
+    );
+
+    G = BN_new();
+    BN_set_word(G, 2);
+}
+
+void free_dh_params(void)
+{
+    BN_free(MODP);
+    BN_free(G);
+}
+
+
+void sq_mult(const BIGNUM *a, BIGNUM *share, BN_CTX *ctx)
 {
     BIGNUM *base = BN_new();
+    BIGNUM *temp = BN_new();
 
-    if (base == NULL) {
+    if (base == NULL || temp == NULL)
+    {
         printf("BN_new failed\n");
         return;
     }
 
-    BN_copy(base, g);
+    BN_copy(base, G);
 
     int n = BN_num_bits(a);
 
     for (int i = n - 2; i >= 0; i--)
     {
-        BN_mod_mul(base, base, base, p, ctx);
+        BN_mul(temp, base, base, ctx);
+        BN_mod(base, temp, MODP, ctx);
 
         if (BN_is_bit_set(a, i))
         {
-            BN_mod_mul(base, base, g, p, ctx);
+            BN_mul(temp, base, G, ctx);
+            BN_mod(base, temp, MODP, ctx);
         }
     }
 
     BN_copy(share, base);
 
+    BN_free(temp);
     BN_free(base);
 }
-void secret_maker(const BIGNUM *ga, const BIGNUM *b, const BIGNUM *p, BIGNUM *secret, BN_CTX *ctx)
+
+void secret_maker(const BIGNUM *ga, const BIGNUM *b, BIGNUM *secret, BN_CTX *ctx)
 {
-    sq_mult(ga, b, p, secret, ctx);
-}
+    BIGNUM *base = BN_new();
+    BIGNUM *temp = BN_new();
 
-int main(void)
-{
-    BN_CTX *ctx = BN_CTX_new();
-
-    if (ctx == NULL) {
-        printf("BN_CTX_new failed\n");
-        return 1;
-    }
-
-    BIGNUM *g = BN_new();
-    BIGNUM *a = BN_new();
-    BIGNUM *b = BN_new();
-    BIGNUM *p = BN_new();
-
-    BIGNUM *share_a = BN_new();
-    BIGNUM *share_b = BN_new();
-
-    BIGNUM *secret_a = BN_new();
-    BIGNUM *secret_b = BN_new();
-
-    if (!g || !a || !b || !p || !share_a || !share_b || !secret_a || !secret_b)
+    if (base == NULL || temp == NULL)
     {
         printf("BN_new failed\n");
-        return 1;
+        return;
     }
 
-    BN_set_word(g, 9);
-    BN_set_word(a, 35);
-    BN_set_word(b, 45);
-    BN_set_word(p, 7);
+    BN_copy(base, ga);
 
-    sq_mult(g, a, p, share_a, ctx);
-    sq_mult(g, b, p, share_b, ctx);
+    int n = BN_num_bits(b);
 
-    printf("share_a: ");
-    BN_print_fp(stdout, share_a);
-    printf("\n");
+    for (int i = n - 2; i >= 0; i--)
+    {
+        BN_mul(temp, base, base, ctx);
+        BN_mod(base, temp, MODP, ctx);
 
-    printf("share_b: ");
-    BN_print_fp(stdout, share_b);
-    printf("\n");
+        if (BN_is_bit_set(b, i))
+        {
+            BN_mul(temp, base, ga, ctx);
+            BN_mod(base, temp, MODP, ctx);
+        }
+    }
 
-    secret_maker(share_b, a, p, secret_a, ctx);
-    secret_maker(share_a, b, p, secret_b, ctx);
+    BN_copy(secret, base);
 
-    printf("secret_a: ");
-    BN_print_fp(stdout, secret_a);
-    printf("\n");
-
-    printf("secret_b: ");
-    BN_print_fp(stdout, secret_b);
-    printf("\n");
-
-    if (BN_cmp(secret_a, secret_b) == 0)
-        printf("DH successful!\n");
-    else
-        printf("DH FAILED!\n");
-
-    BN_free(g);
-    BN_free(a);
-    BN_free(b);
-    BN_free(p);
-
-    BN_free(share_a);
-    BN_free(share_b);
-
-    BN_free(secret_a);
-    BN_free(secret_b);
-
-    BN_CTX_free(ctx);
-
-    return 0;
+    BN_free(temp);
+    BN_free(base);
 }

@@ -1,16 +1,76 @@
 #include <stdio.h>
 #include <string.h>
 #include <unistd.h>
+#include <openssl/bn.h>
+#include <time.h>
 
 #include "users.h"
+#include "dh.h"
 
 struct User users[MAX_USERS];
 int user_count = 0;
 
 int register_client(int c)
 {
+    srand(time(NULL) ^ getpid());
+
     char username[MAX_USERNAME];
+    char buf[1000];
     char response[1000];
+
+    
+    BN_CTX *ctx = BN_CTX_new();
+
+    BIGNUM *server_sec = BN_new();
+    BIGNUM *secret = BN_new();
+    BIGNUM *share = BN_new();
+
+    char x[513];
+
+    char hexa[] = {
+        '0','1','2','3','4','5','6','7','8','9','A','B','C','D','E','F'
+    };
+
+    for (int i = 0; i < 512; i++)
+    {
+        x[i] = hexa[rand() % 16];
+    }
+
+    x[512] = '\0';
+
+    // printf("\n\nserver key:\n%s\n\n", x);
+
+    BN_hex2bn(&server_sec, x);
+
+    // printf("\n\nserver key (after conv):\n");
+    // BN_print_fp(stdout, server_sec);
+
+    sq_mult(server_sec, share, ctx);
+
+    // printf("\n\nserver share:\n");
+    // BN_print_fp(stdout, share);
+    printf("\n");
+
+    // response = BN_bn2hex(share);
+
+    strcpy(response, BN_bn2hex(share));
+
+    write(c, response, strlen(response));
+
+    int n = read(c, buf, 513);
+
+    BIGNUM *client_share = BN_new();
+    BN_hex2bn(&client_share, buf);
+
+    BIGNUM *KEY = BN_new();
+    secret_maker(client_share, server_sec, KEY, ctx); 
+    
+    // printf("\n\nkey:\n");
+    // BN_print_fp(stdout, KEY);
+    printf("\n");
+
+    char hexkey[513];
+    strcpy(hexkey, BN_bn2hex(KEY));
 
     while (1)
     {
@@ -52,6 +112,8 @@ int register_client(int c)
 
         users[user_count].chat_with[0] = '\0';
 
+        strcpy(users[user_count].KEY, hexkey);
+
         sprintf(response,
                 "User Registration Successful.\n"
                 "User registered with name: %s"
@@ -66,6 +128,17 @@ int register_client(int c)
                c);
 
         user_count++;
+
+            
+        BN_free(server_sec);
+        BN_free(secret);
+        BN_free(share);
+        BN_free(client_share);
+        BN_free(KEY);
+        BN_CTX_free(ctx);
+
+
+
 
         return 1;
     }
