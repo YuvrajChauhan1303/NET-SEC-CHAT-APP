@@ -5,9 +5,10 @@
 #include <arpa/inet.h>
 #include <unistd.h>
 #include <netdb.h>
-#include<stdlib.h>
+#include <stdlib.h>
 #include <time.h>
 #include <openssl/bn.h>
+#include <openssl/sha.h>
 
 #include "dh.h"
 
@@ -105,6 +106,22 @@ int main(int argc, char *argv[])
     // printf("\n\nkey:\n");
     // BN_print_fp(stdout, KEY);
     printf("\n");
+
+    char hexkey[513];
+    strcpy(hexkey, BN_bn2hex(KEY));
+
+    unsigned char hashed_key[SHA256_DIGEST_LENGTH];
+    SHA256((unsigned char*)hexkey, strlen(hexkey), hashed_key);
+
+    printf("\n\n");
+
+
+    for (int i = 0; i < SHA256_DIGEST_LENGTH; i++)
+    {
+        printf("%02x", hashed_key[i]);
+    }
+    
+    printf("\n\n");
 
     n = read(s, buf, sizeof(buf) - 1);
 

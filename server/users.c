@@ -3,6 +3,8 @@
 #include <unistd.h>
 #include <openssl/bn.h>
 #include <time.h>
+#include <openssl/sha.h>
+
 
 #include "users.h"
 #include "dh.h"
@@ -72,6 +74,20 @@ int register_client(int c)
     char hexkey[513];
     strcpy(hexkey, BN_bn2hex(KEY));
 
+    unsigned char hashed_key[SHA256_DIGEST_LENGTH];
+
+    SHA256((unsigned char*)hexkey, strlen(hexkey), hashed_key);
+
+    printf("\n\n");
+
+    for (int i = 0; i < SHA256_DIGEST_LENGTH; i++)
+    {
+        printf("%02x", hashed_key[i]);
+    }
+
+    printf("\n\n");
+
+
     while (1)
     {
         sprintf(response, "Enter Name:\t");
@@ -112,7 +128,7 @@ int register_client(int c)
 
         users[user_count].chat_with[0] = '\0';
 
-        strcpy(users[user_count].KEY, hexkey);
+        strcpy(users[user_count].KEY, hashed_key);
 
         sprintf(response,
                 "User Registration Successful.\n"

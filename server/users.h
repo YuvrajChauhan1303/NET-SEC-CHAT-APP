@@ -6,7 +6,7 @@ struct User
     char username[MAX_USERNAME];
     int socket;
     char chat_with[MAX_USERNAME];
-    char KEY[513];
+    unsigned char KEY[65];
 };
 
 extern struct User users[MAX_USERS];
