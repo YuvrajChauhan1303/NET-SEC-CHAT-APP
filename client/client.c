@@ -65,17 +65,17 @@ int main(int argc, char *argv[])
 
     x[512] = '\0';
 
-    // printf("\n\nclient key:\n%s\n\n", x);
+    printf("\n\nclient key:\n%s\n\n", x);
 
     BN_hex2bn(&client_sec, x);
 
-    // printf("\n\nclient key (after conv):\n");
-    // BN_print_fp(stdout, client_sec);
+    printf("\n\nclient key (after conv):\n");
+    BN_print_fp(stdout, client_sec);
 
     sq_mult(client_sec, share, ctx);
 
-    // printf("\n\nclient share:\n");
-    // BN_print_fp(stdout, share);
+    printf("\n\nclient share:\n");
+    BN_print_fp(stdout, share);
     printf("\n");
 
     connect(s, res->ai_addr, res->ai_addrlen);
@@ -95,7 +95,7 @@ int main(int argc, char *argv[])
     buf[n] = '\0';
 
 
-    // printf("Server: %s\n", buf);
+    printf("Server: %s\n", buf);
 
     BIGNUM *server_share = BN_new();
     BN_hex2bn(&server_share, buf);
@@ -103,8 +103,8 @@ int main(int argc, char *argv[])
     BIGNUM *KEY = BN_new();
     secret_maker(server_share, client_sec, KEY, ctx);
 
-    // printf("\n\nkey:\n");
-    // BN_print_fp(stdout, KEY);
+    printf("\n\nkey:\n");
+    BN_print_fp(stdout, KEY);
     printf("\n");
 
     char hexkey[513];
