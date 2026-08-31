@@ -27,16 +27,13 @@ int derive_aes_key(const BIGNUM *shared_secret, unsigned char *aes_key)
     char *hex_secret;
 
     hex_secret = BN_bn2hex(shared_secret);
-
     if(hex_secret == NULL){
 
         printf("Failed to convert shared secret to hex\n");
-
         return 0;
     }
 
-    SHA256((unsigned char * ) hex_secret, strlen(hex_secret), aes_key); //hex_secret is the data being hashed
-
+    SHA256((unsigned char * ) hex_secret, strlen(hex_secret), aes_key); //hex_secret is the data being hashed ands stored in aes_key
     OPENSSL_free(hex_secret);
 
     return 1;
@@ -166,9 +163,9 @@ int aes_decrypt(
     // initialize decry.
     if(EVP_DecryptInit_ex(ctx, EVP_aes_256_gcm(), NULL, NULL, NULL) != 1)
     {
-        printf("Failed to init AES-GCM\n");
+    printf("Failed to init AES-GCM\n");
         
-        EVP_CIPHER_CTX_free(ctx);
+    EVP_CIPHER_CTX_free(ctx);
 
         return -1;
     }
@@ -176,18 +173,14 @@ int aes_decrypt(
     if(EVP_DecryptInit_ex(ctx, NULL, NULL, aes_key, iv) != 1)
     {
         printf("Failed to set aes key and iv \n");
-
         EVP_CIPHER_CTX_free(ctx);
 
         return -1;
     }
-
     if( EVP_DecryptUpdate(ctx, plaintext, &len, ciphertext, ciphertext_len) != 1)
     {
         printf("Decryption failed \n");
-
         EVP_CIPHER_CTX_free(ctx);
-
         return -1;
     }
 
@@ -196,11 +189,10 @@ int aes_decrypt(
     //verifying the tag
     if (EVP_CIPHER_CTX_ctrl(ctx, EVP_CTRL_GCM_SET_TAG, GCM_TAG_SIZE, (void *)tag) != 1)
     {
-        printf("Failed to set authentication tag\n");
-
+        printf("Failed to set auhentication tag\n");
         EVP_CIPHER_CTX_free(ctx);
 
-        return -1;
+    return -1;
     }
 
     //final decryption

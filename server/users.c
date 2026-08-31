@@ -40,17 +40,17 @@ int register_client(int c)
 
     x[512] = '\0';
 
-    // printf("\n\nserver key:\n%s\n\n", x);
+    printf("\n\nserver key:\n%s\n\n", x);
 
     BN_hex2bn(&server_sec, x);
 
-    // printf("\n\nserver key (after conv):\n");
-    // BN_print_fp(stdout, server_sec);
+    printf("\n\nserver key (after conv):\n");
+    BN_print_fp(stdout, server_sec);
 
     sq_mult(server_sec, share, ctx);
 
-    // printf("\n\nserver share:\n");
-    // BN_print_fp(stdout, share);
+    printf("\n\nserver share:\n");
+    BN_print_fp(stdout, share);
     printf("\n");
 
     // response = BN_bn2hex(share);

@@ -11,6 +11,7 @@
 #include <openssl/sha.h>
 
 #include "dh.h"
+#include "crypto.h"
 
 
 
@@ -67,7 +68,7 @@ int main(int argc, char *argv[])
 
     printf("\n\nclient key:\n%s\n\n", x);
 
-    BN_hex2bn(&client_sec, x);
+    BN_hex2bn(&client_sec, x); 
 
     printf("\n\nclient key (after conv):\n");
     BN_print_fp(stdout, client_sec);
@@ -104,24 +105,38 @@ int main(int argc, char *argv[])
     secret_maker(server_share, client_sec, KEY, ctx);
 
     printf("\n\nkey:\n");
+
     BN_print_fp(stdout, KEY);
+    
     printf("\n");
 
-    char hexkey[513];
-    strcpy(hexkey, BN_bn2hex(KEY));
-
-    unsigned char hashed_key[SHA256_DIGEST_LENGTH];
-    SHA256((unsigned char*)hexkey, strlen(hexkey), hashed_key);
-
-    printf("\n\n");
-
-
-    for (int i = 0; i < SHA256_DIGEST_LENGTH; i++)
-    {
-        printf("%02x", hashed_key[i]);
-    }
+    unsigned char aes_key[AES_KEY_SIZE];
     
-    printf("\n\n");
+    if(derive_aes_key(KEY, aes_key) != 1)
+    {
+        printf("Failed to derive aes key");
+        return 1;
+
+    }
+    printf("\n AES KEY \n");
+    print_hex( "", aes_key, AES_KEY_SIZE);
+
+    printf("\n");
+    // char hexkey[513];
+    // strcpy(hexkey, BN_bn2hex(KEY));
+
+    // unsigned char hashed_key[SHA256_DIGEST_LENGTH];
+    // SHA256((unsigned char*)hexkey, strlen(hexkey), hashed_key);
+
+    // printf("\n\n");
+
+
+    // for (int i = 0; i < SHA256_DIGEST_LENGTH; i++)
+    // {
+    //     printf("%02x", hashed_key[i]);
+    // }
+    
+    // printf("\n\n");
 
     n = read(s, buf, sizeof(buf) - 1);
 
