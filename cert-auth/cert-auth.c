@@ -1,79 +1,233 @@
 #include <stdio.h>
 #include <stdlib.h>
+#include <stdint.h>
 #include <string.h>
 #include <unistd.h>
-#include <arpa/inet.h>
 #include <sys/socket.h>
+#include <netinet/in.h>
+#include <sys/select.h>
 #include <openssl/evp.h>
 #include <openssl/x509.h>
+
 #include "services.h"
 
-#define PORT 8081
-#define BACKLOG 10
+#define CA_PORT 8080
 
 int main()
 {
-    int server_socket;
-    int client_socket;
-    int opt = 1;
-    struct sockaddr_in server_addr;
-    struct sockaddr_in client_addr;
-    socklen_t client_len = sizeof(client_addr);
+    int s, c;
 
-    server_socket = socket(AF_INET, SOCK_STREAM, 0);
+    struct sockaddr_in addr = {0};
 
-    setsockopt(server_socket, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
+    char buf[1000];
 
-    server_addr.sin_family = AF_INET;
-    server_addr.sin_addr.s_addr = INADDR_ANY;
-    server_addr.sin_port = htons(PORT);
+    EVP_PKEY *ca_key;
+    X509 *ca_cert;
 
-    bind(server_socket, (struct sockaddr *)&server_addr, sizeof(server_addr));
-    listen(server_socket, BACKLOG);
+    ca_key = generate_ca_key();
+    ca_cert = generate_ca_certificate(ca_key);
 
-    printf("Cert-auth server listening on port %d\n", PORT);
+    save_ca_key(ca_key);
+    save_ca_certificate(ca_cert);
+
+    s = socket(AF_INET, SOCK_STREAM, 0);
+
+    addr.sin_family = AF_INET;
+    addr.sin_port = htons(CA_PORT);
+    addr.sin_addr.s_addr = INADDR_ANY;
+
+    bind(s, (struct sockaddr *)&addr, sizeof(addr));
+
+    listen(s, 10);
+
+    printf("[CA] Cert-Auth Initialized. Listening for requests.\n\n");
 
     while (1)
     {
-        client_socket = accept(server_socket, (struct sockaddr *)&client_addr, &client_len);
+        fd_set readfds;
 
-        char username[MAX_USERNAME];
-        unsigned int key_len;
-        unsigned char *key_data;
-        const unsigned char *key_ptr;
-        EVP_PKEY *public_key;
+        FD_ZERO(&readfds);
 
-        recv(client_socket, username, MAX_USERNAME, 0);
-        recv(client_socket, &key_len, sizeof(key_len), 0);
+        FD_SET(s, &readfds);
 
-        key_len = ntohl(key_len);
+        int max_fd = s;
 
-        key_data = malloc(key_len);
-
-        recv(client_socket, key_data, key_len, 0);
-
-        key_ptr = key_data;
-        public_key = d2i_PUBKEY(NULL, &key_ptr, key_len);
-
-        if (register_client(username, public_key) == -1)
+        for (int i = 0; i < user_count; i++)
         {
-            printf("Username already taken: %s\n", username);
-            EVP_PKEY_free(public_key);
-            free(key_data);
-            close(client_socket);
-            continue;
+            FD_SET(users[i].socket, &readfds);
+
+            if (users[i].socket > max_fd)
+                max_fd = users[i].socket;
         }
 
-        printf("Registered client: %s\n", username);
+        select(max_fd + 1, &readfds, NULL, NULL, NULL);
 
-        print_users();
+        if (FD_ISSET(s, &readfds))
+        {
+            c = accept(s, NULL, NULL);
 
-        close(client_socket);
+            printf("[CA] New connection. Socket: %d\n", c);
 
-        free(key_data);
+            uint32_t csr_len;
+
+            int n = read(c, &csr_len, sizeof(csr_len));
+
+            if (n <= 0)
+            {
+                close(c);
+                continue;
+            }
+
+            csr_len = ntohl(csr_len);
+
+            unsigned char *csr_data = malloc(csr_len);
+
+            read(c, csr_data, csr_len);
+
+            const unsigned char *p = csr_data;
+
+            X509_REQ *csr = d2i_X509_REQ(NULL, &p, csr_len);
+
+            free(csr_data);
+
+            if (verify_csr(csr) != 1)
+            {
+                printf("[CA] CSR verification failed.\n");
+
+                X509_REQ_free(csr);
+                close(c);
+
+                continue;
+            }
+
+            printf("[CA] CSR verification successful.\n");
+
+            X509_NAME *subject = X509_REQ_get_subject_name(csr);
+
+            char username[MAX_USERNAME];
+
+            X509_NAME_get_text_by_NID(subject, NID_commonName, username, MAX_USERNAME);
+
+            if (find_user(username) != -1)
+            {
+                printf("[CA] Username already taken: %s\n", username);
+
+                X509_REQ_free(csr);
+                close(c);
+
+                continue;
+            }
+
+            EVP_PKEY *client_key = X509_REQ_get_pubkey(csr);
+
+            X509 *client_cert = sign_csr(ca_key, ca_cert, csr);
+
+            register_client(username, c, client_key, client_cert);
+
+            printf("[CA] Registered %s on socket %d\n", username, c);
+
+            int cert_len = i2d_X509(client_cert, NULL);
+
+            unsigned char *cert_data = malloc(cert_len);
+
+            unsigned char *q = cert_data;
+
+            i2d_X509(client_cert, &q);
+
+            uint32_t send_len = htonl(cert_len);
+
+            write(c, &send_len, sizeof(send_len));
+            write(c, cert_data, cert_len);
+
+            free(cert_data);
+
+            X509_REQ_free(csr);
+
+            printf("[CA] Certificate sent to %s\n", username);
+
+            print_users();
+        }
+
+        for (int i = 0; i < user_count; i++)
+        {
+            int client_socket = users[i].socket;
+
+            if (FD_ISSET(client_socket, &readfds))
+            {
+                int n = read(client_socket, buf, sizeof(buf) - 1);
+
+                if (n <= 0)
+                {
+                    printf("[CA] %s disconnected.\n", users[i].username);
+
+                    close(client_socket);
+                    remove_client(i);
+
+                    i--;
+
+                    continue;
+                }
+
+                buf[n] = '\0';
+
+                if (!strncmp(buf, "/give ", 6))
+                {
+                    char username[MAX_USERNAME];
+
+                    strcpy(username, buf + 6);
+
+                    username[strcspn(username, "\n")] = '\0';
+
+                    int target = find_user(username);
+
+                    if (target == -1)
+                    {
+                        char response[] = "User not found\n";
+
+                        write(client_socket, response, strlen(response));
+
+                        continue;
+                    }
+
+                    X509 *certificate = users[target].certificate;
+
+                    int cert_len = i2d_X509(certificate, NULL);
+
+                    unsigned char *cert_data = malloc(cert_len);
+
+                    unsigned char *q = cert_data;
+
+                    i2d_X509(certificate, &q);
+
+                    uint32_t send_len = htonl(cert_len);
+
+                    write(client_socket, &send_len, sizeof(send_len));
+                    write(client_socket, cert_data, cert_len);
+
+                    free(cert_data);
+
+                    printf("[CA] Sent certificate of %s to %s\n", username, users[i].username);
+                }
+
+                else if (!strcmp(buf, "/quit"))
+                {
+                    printf("[CA] %s disconnected.\n", users[i].username);
+
+                    close(client_socket);
+                    remove_client(i);
+
+                    i--;
+
+                    continue;
+                }
+            }
+        }
     }
 
-    close(server_socket);
+    close(s);
+
+    EVP_PKEY_free(ca_key);
+    X509_free(ca_cert);
 
     return 0;
 }

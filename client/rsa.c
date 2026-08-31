@@ -3,6 +3,8 @@
 #include <openssl/evp.h>
 #include <openssl/pem.h>
 #include <openssl/rsa.h>
+#include <openssl/x509.h>
+
 #include "rsa.h"
 
 int rsa_generate_keypair(const char *private_key_path, const char *public_key_path)
