@@ -5,21 +5,16 @@
 #include <unistd.h>
 #include <sys/select.h>
 
-
 #include "users.h"
 #include "chat.h"
 #include "services.h"
 #include "dh.h"
-#include "../crypto/crypto.h"
-
+#include "aes.h"
 
 int main()
 {
     int s, c;
-
     struct sockaddr_in addr = {0};
-
-    char buf[100];
 
     s = socket(AF_INET, SOCK_STREAM, 0);
 
@@ -38,7 +33,6 @@ int main()
         fd_set readfds;
 
         FD_ZERO(&readfds);
-
         FD_SET(s, &readfds);
 
         int max_fd = s;
@@ -58,99 +52,68 @@ int main()
             c = accept(s, NULL, NULL);
 
             printf("[SERVER] New connection. Socket: %d\n", c);
+
             init_dh_params();
 
             if (register_client(c))
-            {
                 printf("[SERVER] Registration complete.\n");
-            }
         }
 
         for (int i = 0; i < user_count; i++)
         {
             int client_socket = users[i].socket;
 
-            if (FD_ISSET(client_socket, &readfds))
+            if (!FD_ISSET(client_socket, &readfds))
+                continue;
+
+            unsigned char plaintext[4096];
+
+            int plaintext_len = receive_command(client_socket, users[i].KEY, (char *)plaintext, sizeof(plaintext));
+
+            if (plaintext_len <= 0)
             {
-                unsigned char encrypted[2048];
-                unsigned char plaintext[2048];
+                service_quit(i);
+                i--;
+                continue;
+            }
 
-                int n = read(client_socket, encrypted, sizeof(encrypted));
+            printf("[CLIENT %s] %s\n", users[i].username, plaintext);
 
-                printf("[SERVER] Received encrypted packet: ");
-                for (int j = 0; j < n; j++)
-                {
-                    printf("%02x", encrypted[j]);
-                }
-                printf("\n");
+            if (!strcmp((char *)plaintext, "/who"))
+            {
+                printf("[SERVER] %s requested /who\n", users[i].username);
+                service_who(client_socket);
+            }
+            else if (!strncmp((char *)plaintext, "/chat ", 6))
+            {
+                service_chat(i, (char *)plaintext);
+            }
+            else if (!strcmp((char *)plaintext, "/quit"))
+            {
+                service_quit(i);
+                i--;
+                continue;
+            }
+            else if (plaintext[0] == '@')
+            {
+                char username[MAX_USERNAME];
 
-                if (n <= 0)
-                    continue;
+                get_username((char *)plaintext, username);
 
-                int plaintext_len = decrypt_message( encrypted,n,users[i].KEY,plaintext);
+                service_chat_username(i, username);
 
-                
+                char *msg = (char *)plaintext + strlen(username) + 2;
 
-                
-                if (plaintext_len < 0)
-                {
-                    printf("[SERVER] Decryption failed\n");
-                    continue;
-                }
-                plaintext[plaintext_len] = '\0';
-
-                printf("[CLIENT %s] %s\n",users[i].username,plaintext);
-
-                // printf("[CLIENT %s] %s\n",
-                //     users[i].username,
-                //     buf);
-
-                if (!strcmp((char *)plaintext, "/who"))
-                {
-                    printf("[SERVER] %s requested /who\n",
-                        users[i].username);
-
-                    service_who(client_socket);
-                }
-
-                else if (!strncmp((char *)plaintext, "/chat ", 6))
-                {
-                    service_chat(i,(char*)plaintext );
-                }
-
-                else if (!strcmp((char *)plaintext, "/quit"))
-                {
-                    service_quit(client_socket,
-                                users[i].username);
-
-                    i--;
-
-                    continue;
-                }
-
-                else if (plaintext[0] == '@')
-                {
-                    char username[MAX_USERNAME];
-
-                    get_username((char *)plaintext, username);
-
-                    service_chat_username(i, username);
-
-                    char *msg =(char *)plaintext + strlen(username) + 2;
-                    service_message(i, msg);
-                }
-
-                else
-                {
-                    service_message(i,(char *)plaintext);
-                }
+                service_message(i, msg);
+            }
+            else
+            {
+                service_message(i, (char *)plaintext);
             }
         }
     }
 
     close(s);
-
-
     free_dh_params();
 
     return 0;

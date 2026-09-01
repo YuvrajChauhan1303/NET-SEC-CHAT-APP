@@ -8,27 +8,13 @@
 #include <stdlib.h>
 #include <time.h>
 #include <openssl/bn.h>
-#include <openssl/sha.h>
 
+#include "services.h"
 #include "dh.h"
-#include "crypto.h"
+#include "aes.h"
 
-
-
-void send_command(int s, char *buf, unsigned char *aes_key)
-{
-    
-    unsigned char encrypted[];
-    int encrypted_len = encrypt_message((unsigned char *)buf, strlen(buf), aes_key, encrypted);
-    
-    printf("Encryp. message before sending\n]n");
-    for (int i = 0; i < encrypted_len; i++)
-    {
-        printf("%02x", encrypted[i]);
-    }
-    printf("\n");
-    write(s, encrypted, encrypted_len);
-}
+#define BUFFER_SIZE 1000
+#define ENCRYPTED_BUFFER_SIZE (BUFFER_SIZE + GCM_IV_SIZE + GCM_TAG_SIZE)
 
 int main(int argc, char *argv[])
 {
@@ -48,37 +34,52 @@ int main(int argc, char *argv[])
     hints.ai_family = AF_INET;
     hints.ai_socktype = SOCK_STREAM;
 
-    getaddrinfo(host, port, &hints, &res);
+    if (getaddrinfo(host, port, &hints, &res) != 0)
+    {
+        printf("Failed to resolve server address\n");
+        return 1;
+    }
 
     s = socket(res->ai_family, res->ai_socktype, res->ai_protocol);
 
+    if (s < 0)
+    {
+        printf("Failed to create socket\n");
+        freeaddrinfo(res);
+        return 1;
+    }
 
     init_dh_params();
 
     BN_CTX *ctx = BN_CTX_new();
-
     BIGNUM *client_sec = BN_new();
     BIGNUM *secret = BN_new();
     BIGNUM *share = BN_new();
 
+    if (ctx == NULL || client_sec == NULL || secret == NULL || share == NULL)
+    {
+        printf("Failed to allocate DH parameters\n");
+        close(s);
+        freeaddrinfo(res);
+        return 1;
+    }
+
     char x[513];
 
     char hexa[] = {
-        '0','1','2','3','4','5','6','7','8','9','A','B','C','D','E','F'
-    };
+        '0', '1', '2', '3', '4', '5', '6', '7',
+        '8', '9', 'A', 'B', 'C', 'D', 'E', 'F'};
 
     srand(time(NULL) ^ getpid());
 
     for (int i = 0; i < 512; i++)
-    {
         x[i] = hexa[rand() % 16];
-    }
 
     x[512] = '\0';
 
     printf("\n\nclient key:\n%s\n\n", x);
 
-    BN_hex2bn(&client_sec, x); 
+    BN_hex2bn(&client_sec, x);
 
     printf("\n\nclient key (after conv):\n");
     BN_print_fp(stdout, client_sec);
@@ -89,14 +90,51 @@ int main(int argc, char *argv[])
     BN_print_fp(stdout, share);
     printf("\n");
 
-    connect(s, res->ai_addr, res->ai_addrlen);
+    if (connect(s, res->ai_addr, res->ai_addrlen) < 0)
+    {
+        printf("Failed to connect to server\n");
+        close(s);
+        freeaddrinfo(res);
+        BN_free(client_sec);
+        BN_free(secret);
+        BN_free(share);
+        BN_CTX_free(ctx);
+        free_dh_params();
+        return 1;
+    }
+
     freeaddrinfo(res);
 
-    char buf[1000];
+    char buf[BUFFER_SIZE];
 
-    strcpy(buf, BN_bn2hex(share));
+    char *share_hex = BN_bn2hex(share);
 
-    write(s, buf, 513);
+    if (share_hex == NULL)
+    {
+        printf("Failed to convert client share\n");
+        close(s);
+        BN_free(client_sec);
+        BN_free(secret);
+        BN_free(share);
+        BN_CTX_free(ctx);
+        free_dh_params();
+        return 1;
+    }
+
+    strcpy(buf, share_hex);
+    OPENSSL_free(share_hex);
+
+    if (write(s, buf, 513) != 513)
+    {
+        printf("Failed to send client share\n");
+        close(s);
+        BN_free(client_sec);
+        BN_free(secret);
+        BN_free(share);
+        BN_CTX_free(ctx);
+        free_dh_params();
+        return 1;
+    }
 
     int n = read(s, buf, sizeof(buf) - 1);
 
@@ -105,93 +143,167 @@ int main(int argc, char *argv[])
 
     buf[n] = '\0';
 
-
     printf("Server: %s\n", buf);
 
     BIGNUM *server_share = BN_new();
+
+    if (server_share == NULL)
+    {
+        printf("Failed to allocate server share\n");
+        close(s);
+        BN_free(client_sec);
+        BN_free(secret);
+        BN_free(share);
+        BN_CTX_free(ctx);
+        free_dh_params();
+        return 1;
+    }
+
     BN_hex2bn(&server_share, buf);
 
     BIGNUM *KEY = BN_new();
+
+    if (KEY == NULL)
+    {
+        printf("Failed to allocate shared key\n");
+        close(s);
+        BN_free(client_sec);
+        BN_free(secret);
+        BN_free(share);
+        BN_free(server_share);
+        BN_CTX_free(ctx);
+        free_dh_params();
+        return 1;
+    }
+
     secret_maker(server_share, client_sec, KEY, ctx);
 
     printf("\n\nkey:\n");
-
     BN_print_fp(stdout, KEY);
-    
     printf("\n");
 
     unsigned char aes_key[AES_KEY_SIZE];
-    
-    if(derive_aes_key(KEY, aes_key) != 1)
-    {
-        printf("Failed to derive aes key");
-        return 1;
 
+    if (derive_aes_key(KEY, aes_key) != 1)
+    {
+        printf("Failed to derive aes key\n");
+        close(s);
+        BN_free(client_sec);
+        BN_free(secret);
+        BN_free(share);
+        BN_free(server_share);
+        BN_free(KEY);
+        BN_CTX_free(ctx);
+        free_dh_params();
+        return 1;
     }
-    printf("\n AES KEY \n");
-    print_hex( "", aes_key, AES_KEY_SIZE);
+
+    printf("\nAES KEY\n");
+    print_hex("", aes_key, AES_KEY_SIZE);
 
     printf("\n");
     print_key_fingerprint(aes_key);
-    // char hexkey[513];
-    // strcpy(hexkey, BN_bn2hex(KEY));
+    printf("\n");
 
-    // unsigned char hashed_key[SHA256_DIGEST_LENGTH];
-    // SHA256((unsigned char*)hexkey, strlen(hexkey), hashed_key);
+    while (1)
+    {
+        n = receive_command(s, aes_key, buf, sizeof(buf));
 
-    // printf("\n\n");
+        if (n <= 0)
+        {
+            printf("Connection closed during registration\n");
+            close(s);
+            BN_free(client_sec);
+            BN_free(secret);
+            BN_free(share);
+            BN_free(server_share);
+            BN_free(KEY);
+            BN_CTX_free(ctx);
+            free_dh_params();
+            return 1;
+        }
 
+        printf("Server: %s", buf);
 
-    // for (int i = 0; i < SHA256_DIGEST_LENGTH; i++)
-    // {
-    //     printf("%02x", hashed_key[i]);
-    // }
-    
-    // printf("\n\n");
+        if (fgets(buf, sizeof(buf), stdin) == NULL)
+        {
+            close(s);
+            BN_free(client_sec);
+            BN_free(secret);
+            BN_free(share);
+            BN_free(server_share);
+            BN_free(KEY);
+            BN_CTX_free(ctx);
+            free_dh_params();
+            return 1;
+        }
 
-    n = read(s, buf, sizeof(buf) - 1);
+        buf[strcspn(buf, "\n")] = '\0';
 
-    if (n <= 0)
+        send_command(s, buf, aes_key);
+
+        n = receive_command(s, aes_key, buf, sizeof(buf));
+
+        if (n <= 0)
+        {
+            printf("Connection closed during registration\n");
+            close(s);
+            BN_free(client_sec);
+            BN_free(secret);
+            BN_free(share);
+            BN_free(server_share);
+            BN_free(KEY);
+            BN_CTX_free(ctx);
+            free_dh_params();
+            return 1;
+        }
+
+        printf("Server: %s\n", buf);
+
+        if (strstr(buf, "User Registration Successful.") != NULL)
+            break;
+    }
+
+    if (fgets(buf, sizeof(buf), stdin) == NULL)
+    {
+        close(s);
         return 1;
+    }
 
-    buf[n] = '\0';
-
-    printf("Server: %s", buf);
-
-    fgets(buf, sizeof(buf), stdin);
-    buf[strlen(buf) - 1] = '\0';
+    buf[strcspn(buf, "\n")] = '\0';
 
     send_command(s, buf, aes_key);
 
-    n = read(s, buf, sizeof(buf) - 1);
+    n = receive_command(s, aes_key, buf, sizeof(buf));
 
     if (n <= 0)
         return 1;
 
-    buf[n] = '\0';
-
-    printf("Server: %s", buf);
+    printf("Server: %s\n", buf);
 
     if (fork() == 0)
     {
         while (1)
         {
-            n = read(s, buf, sizeof(buf) - 1);
+            n = receive_command(s, aes_key, buf, sizeof(buf));
 
             if (n <= 0)
                 break;
 
-            buf[n] = '\0';
-
             printf("Server:\n\n%s\n", buf);
         }
+
+        close(s);
+        return 0;
     }
     else
     {
         while (1)
         {
-            fgets(buf, sizeof(buf), stdin);
-            buf[strlen(buf) - 1] = '\0';
+            if (fgets(buf, sizeof(buf), stdin) == NULL)
+                break;
+
+            buf[strcspn(buf, "\n")] = '\0';
 
             send_command(s, buf, aes_key);
 
@@ -210,7 +322,6 @@ int main(int argc, char *argv[])
     BN_free(share);
     BN_free(server_share);
     BN_free(KEY);
-
     BN_CTX_free(ctx);
 
     free_dh_params();
