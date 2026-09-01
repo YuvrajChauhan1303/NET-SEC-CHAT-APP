@@ -64,18 +64,18 @@ int main(int argc, char *argv[])
 
     x[512] = '\0';
 
-    printf("\n\nclient key:\n%s\n\n", x);
+    // printf("\n\nclient key:\n%s\n\n", x);
 
     BN_hex2bn(&client_sec, x);
 
-    printf("\n\nclient key (after conv):\n");
-    BN_print_fp(stdout, client_sec);
+    // printf("\n\nclient key (after conv):\n");
+    // BN_print_fp(stdout, client_sec);
 
     sq_mult(client_sec, share, ctx);
 
-    printf("\n\nclient share:\n");
-    BN_print_fp(stdout, share);
-    printf("\n");
+    // printf("\n\nclient share:\n");
+    // BN_print_fp(stdout, share);
+    // printf("\n");
 
     connect(s, res->ai_addr, res->ai_addrlen);
 
@@ -121,6 +121,28 @@ int main(int argc, char *argv[])
 
     printf("[CLIENT] Server certificate verified successfully.\n");
 
+    unsigned char challenge[32];
+
+    generate_challenge(challenge);
+    write(s, challenge, 32);
+
+    uint32_t signature_len;
+
+    read(s, &signature_len, sizeof(signature_len));
+
+    unsigned char signature[256];
+
+    read(s, signature, signature_len);
+
+    if (!verify_challenge(server_cert, challenge, 32, signature, signature_len))
+    {
+        printf("[CLIENT] Server proof-of-possession failed.\n");
+        close(s);
+        return 1;
+    }
+
+    printf("[CLIENT] Server proof-of-possession verified.\n");
+
     char buf[1000];
 
     char *share_hex = BN_bn2hex(share);
@@ -138,7 +160,7 @@ int main(int argc, char *argv[])
 
     buf[n] = '\0';
 
-    printf("Server: %s\n", buf);
+    // printf("Server: %s\n", buf);
 
     BIGNUM *server_share = BN_new();
 
@@ -148,9 +170,9 @@ int main(int argc, char *argv[])
 
     secret_maker(server_share, client_sec, KEY, ctx);
 
-    printf("\n\nkey:\n");
-    BN_print_fp(stdout, KEY);
-    printf("\n");
+    // printf("\n\nkey:\n");
+    // BN_print_fp(stdout, KEY);
+    // printf("\n");
 
     unsigned char aes_key[AES_KEY_SIZE];
 

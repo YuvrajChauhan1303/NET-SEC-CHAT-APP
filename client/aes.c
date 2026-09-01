@@ -180,7 +180,7 @@ void print_key_fingerprint(const unsigned char *key)
 
     SHA256(key, AES_KEY_SIZE, fingerprint);
 
-    print_hex("key fingerprint", fingerprint, 32);
+    print_hex("key fingerprint\n", fingerprint, 32);
 }
 
 int encrypt_message(const unsigned char *pt, int ptl, const unsigned char *key, unsigned char *output)

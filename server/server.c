@@ -128,6 +128,20 @@ int main()
 
             free(send_cert_data);
 
+            unsigned char challenge[32];
+
+            read(c, challenge, 32);
+
+            unsigned char signature[256];
+
+            int signature_len = sign_challenge(server_key, challenge, 32, signature);
+
+            uint32_t signature_len_net = signature_len;
+
+            write(c, &signature_len_net, sizeof(signature_len_net));
+
+            write(c, signature, signature_len);
+
             init_dh_params();
 
             if (register_client(c))

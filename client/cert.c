@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include <stdint.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
@@ -8,6 +9,7 @@
 #include <openssl/evp.h>
 #include <openssl/pem.h>
 #include <openssl/x509.h>
+#include <openssl/rand.h>
 
 #include "cert.h"
 
@@ -51,6 +53,7 @@ int validate_server_certificate(X509 *server_cert, X509 *ca_cert)
 {
     EVP_PKEY *ca_key;
     int result;
+    char cn[256];
 
     ca_key = X509_get_pubkey(ca_cert);
 
@@ -67,5 +70,38 @@ int validate_server_certificate(X509 *server_cert, X509 *ca_cert)
     if (X509_cmp_current_time(X509_get0_notAfter(server_cert)) < 0)
         return 0;
 
+    X509_NAME_get_text_by_NID(X509_get_subject_name(server_cert), NID_commonName, cn, sizeof(cn));
+
+    if (strcmp(cn, "chat-app-server") != 0)
+        return 0;
+
     return 1;
+}
+
+int generate_challenge(unsigned char *challenge)
+{
+    RAND_bytes(challenge, 32);
+
+    return 32;
+}
+
+int verify_challenge(X509 *server_cert, unsigned char *challenge, int challenge_len, unsigned char *signature, int signature_len)
+{
+    EVP_PKEY *server_key;
+    EVP_MD_CTX *ctx;
+    int result;
+
+    server_key = X509_get_pubkey(server_cert);
+
+    ctx = EVP_MD_CTX_new();
+
+    EVP_DigestVerifyInit(ctx, NULL, EVP_sha256(), NULL, server_key);
+    EVP_DigestVerifyUpdate(ctx, challenge, challenge_len);
+
+    result = EVP_DigestVerifyFinal(ctx, signature, signature_len);
+
+    EVP_MD_CTX_free(ctx);
+    EVP_PKEY_free(server_key);
+
+    return result;
 }

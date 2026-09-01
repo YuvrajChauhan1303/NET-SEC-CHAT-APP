@@ -39,7 +39,7 @@ X509_REQ *generate_server_csr(EVP_PKEY *server_key)
 
     X509_NAME_add_entry_by_txt(name, "O", MBSTRING_ASC, (unsigned char *)"NET-SEC-CHAT-APP", -1, -1, 0);
 
-    X509_NAME_add_entry_by_txt(name, "CN", MBSTRING_ASC, (unsigned char *)"localhost", -1, -1, 0);
+    X509_NAME_add_entry_by_txt(name, "CN", MBSTRING_ASC, (unsigned char *)"chat-app-server", -1, -1, 0);
 
     X509_REQ_set_pubkey(csr, server_key);
 
@@ -68,4 +68,25 @@ void save_server_certificate(X509 *server_cert)
     PEM_write_X509(f, server_cert);
 
     fclose(f);
+}
+
+int sign_challenge(EVP_PKEY *server_key, unsigned char *challenge, int challenge_len, unsigned char *signature)
+{
+    EVP_MD_CTX *ctx;
+    size_t signature_len;
+
+    ctx = EVP_MD_CTX_new();
+
+    EVP_DigestSignInit(ctx, NULL, EVP_sha256(), NULL, server_key);
+    EVP_DigestSignUpdate(ctx, challenge, challenge_len);
+
+    signature_len = 0;
+
+    EVP_DigestSignFinal(ctx, NULL, &signature_len);
+
+    EVP_DigestSignFinal(ctx, signature, &signature_len);
+
+    EVP_MD_CTX_free(ctx);
+
+    return signature_len;
 }
