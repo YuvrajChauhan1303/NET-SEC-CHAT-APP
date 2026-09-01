@@ -7,9 +7,6 @@
 #define GCM_IV_SIZE 12
 #define GCM_TAG_SIZE 16
 
-#define AES_KEY_SIZE 32
-#define GCM_IV_SIZE 12
-#define GCM_TAG_SIZE 16
 
 int derive_aes_key( const BIGNUM *shared_secret,unsigned char *aes_key);
 
@@ -47,5 +44,10 @@ void print_hex(
     
     int len
 );
+
+void print_key_fingerprint(const unsigned char *key);
+
+int encrypt_message(const unsigned char *pt, int ptl, const unsigned char *key, unsigned char*output);
+int decrypt_message(const unsigned char *input, int input_len, const unsigned char *key, unsigned char *plaintext);
 
 #endif

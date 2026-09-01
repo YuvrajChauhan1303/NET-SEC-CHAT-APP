@@ -15,9 +15,19 @@
 
 
 
-void send_command(int s, char *buf)
+void send_command(int s, char *buf, unsigned char *aes_key)
 {
-    write(s, buf, strlen(buf));
+    
+    unsigned char encrypted[];
+    int encrypted_len = encrypt_message((unsigned char *)buf, strlen(buf), aes_key, encrypted);
+    
+    printf("Encryp. message before sending\n]n");
+    for (int i = 0; i < encrypted_len; i++)
+    {
+        printf("%02x", encrypted[i]);
+    }
+    printf("\n");
+    write(s, encrypted, encrypted_len);
 }
 
 int main(int argc, char *argv[])
@@ -122,6 +132,7 @@ int main(int argc, char *argv[])
     print_hex( "", aes_key, AES_KEY_SIZE);
 
     printf("\n");
+    print_key_fingerprint(aes_key);
     // char hexkey[513];
     // strcpy(hexkey, BN_bn2hex(KEY));
 
@@ -150,7 +161,7 @@ int main(int argc, char *argv[])
     fgets(buf, sizeof(buf), stdin);
     buf[strlen(buf) - 1] = '\0';
 
-    send_command(s, buf);
+    send_command(s, buf, aes_key);
 
     n = read(s, buf, sizeof(buf) - 1);
 
@@ -182,7 +193,7 @@ int main(int argc, char *argv[])
             fgets(buf, sizeof(buf), stdin);
             buf[strlen(buf) - 1] = '\0';
 
-            send_command(s, buf);
+            send_command(s, buf, aes_key);
 
             if (!strcmp(buf, "/quit"))
             {

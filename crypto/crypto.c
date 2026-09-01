@@ -10,6 +10,8 @@
 #include "crypto.h"
 
 
+
+
 void print_hex(const char *label,const unsigned char *data,int len){
 
     printf("%s", label);
@@ -24,18 +26,20 @@ void print_hex(const char *label,const unsigned char *data,int len){
 int derive_aes_key(const BIGNUM *shared_secret, unsigned char *aes_key)
 {
     // hexadecimal representation of the shared key
-    char *hex_secret;
+    int len;
+    unsigned char *secret_bytes;
+    len = BN_num_bytes(shared_secret);
 
-    hex_secret = BN_bn2hex(shared_secret);
-    if(hex_secret == NULL){
+    secret_bytes = malloc(len);
+    if(secret_bytes == NULL){
 
         printf("Failed to convert shared secret to hex\n");
         return 0;
     }
+    BN_bn2bin(shared_secret, secret_bytes);
+    SHA256(secret_bytes, len, aes_key);
 
-    SHA256((unsigned char * ) hex_secret, strlen(hex_secret), aes_key); //hex_secret is the data being hashed ands stored in aes_key
-    OPENSSL_free(hex_secret);
-
+    free(secret_bytes);
     return 1;
 }
 
@@ -210,3 +214,50 @@ int aes_decrypt(
     return plaintext_len;
 
 }
+
+void print_key_fingerprint(const unsigned char *key)
+{
+    unsigned char fingerprint[32];
+
+    SHA256(key, AES_KEY_SIZE, fingerprint);
+
+    print_hex("key fingerprint", fingerprint, 32);
+}
+
+int encrypt_message(const unsigned char *pt, int ptl, const unsigned char *key, unsigned char*output){
+    unsigned char iv[GCM_IV_SIZE];
+    unsigned char tag[GCM_TAG_SIZE];
+
+    unsigned char *ciphertext = output + GCM_IV_SIZE;
+
+    int ciphertext_len ;
+
+    ciphertext_len = aes_encrypt(pt, ptl, key, iv, ciphertext, tag);
+
+    if(ciphertext_len < 0){
+        return -1;
+    }
+
+    memcpy(output, iv, GCM_IV_SIZE);
+    memcpy(output + GCM_IV_SIZE +ciphertext_len, tag, GCM_TAG_SIZE);
+
+    return GCM_IV_SIZE+ciphertext_len+GCM_TAG_SIZE;
+}
+
+int decrypt_message(const unsigned char *input, int input_len, const unsigned char *key, unsigned char *plaintext)
+{
+    if(input_len < GCM_IV_SIZE + GCM_TAG_SIZE){
+        return -1;
+    }
+
+    const unsigned char *iv = input;
+
+    int ciphertext_len = input_len - GCM_IV_SIZE -GCM_TAG_SIZE;
+
+    const unsigned char *ciphertext = input+GCM_IV_SIZE;
+
+    const unsigned char *tag = input + GCM_IV_SIZE + ciphertext_len;
+
+    return aes_decrypt(ciphertext, ciphertext_len, key, iv, tag, plaintext);
+}
+

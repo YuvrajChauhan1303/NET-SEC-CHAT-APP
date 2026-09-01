@@ -10,6 +10,7 @@
 #include "chat.h"
 #include "services.h"
 #include "dh.h"
+#include "../crypto/crypto.h"
 
 
 int main()
@@ -71,30 +72,40 @@ int main()
 
             if (FD_ISSET(client_socket, &readfds))
             {
-                int n = read(client_socket,
-                            buf,
-                            sizeof(buf) - 1);
+                unsigned char encrypted[2048];
+                unsigned char plaintext[2048];
+
+                int n = read(client_socket, encrypted, sizeof(encrypted));
+
+                printf("[SERVER] Received encrypted packet: ");
+                for (int j = 0; j < n; j++)
+                {
+                    printf("%02x", encrypted[j]);
+                }
+                printf("\n");
 
                 if (n <= 0)
+                    continue;
+
+                int plaintext_len = decrypt_message( encrypted,n,users[i].KEY,plaintext);
+
+                
+
+                
+                if (plaintext_len < 0)
                 {
-                    printf("[SERVER] %s disconnected.\n",
-                        users[i].username);
-
-                    service_quit(client_socket,
-                                users[i].username);
-
-                    i--;
-
+                    printf("[SERVER] Decryption failed\n");
                     continue;
                 }
+                plaintext[plaintext_len] = '\0';
 
-                buf[n] = '\0';
+                printf("[CLIENT %s] %s\n",users[i].username,plaintext);
 
-                printf("[CLIENT %s] %s\n",
-                    users[i].username,
-                    buf);
+                // printf("[CLIENT %s] %s\n",
+                //     users[i].username,
+                //     buf);
 
-                if (!strcmp(buf, "/who"))
+                if (!strcmp((char *)plaintext, "/who"))
                 {
                     printf("[SERVER] %s requested /who\n",
                         users[i].username);
@@ -102,12 +113,12 @@ int main()
                     service_who(client_socket);
                 }
 
-                else if (!strncmp(buf, "/chat ", 6))
+                else if (!strncmp((char *)plaintext, "/chat ", 6))
                 {
-                    service_chat(i, buf);
+                    service_chat(i,(char*)plaintext );
                 }
 
-                else if (!strcmp(buf, "/quit"))
+                else if (!strcmp((char *)plaintext, "/quit"))
                 {
                     service_quit(client_socket,
                                 users[i].username);
@@ -117,21 +128,21 @@ int main()
                     continue;
                 }
 
-                else if (buf[0] == '@')
+                else if (plaintext[0] == '@')
                 {
                     char username[MAX_USERNAME];
 
-                    get_username(buf, username);
+                    get_username((char *)plaintext, username);
 
                     service_chat_username(i, username);
 
-                    char *msg = buf + strlen(username) + 2;
+                    char *msg =(char *)plaintext + strlen(username) + 2;
                     service_message(i, msg);
                 }
 
                 else
                 {
-                    service_message(i, buf);
+                    service_message(i,(char *)plaintext);
                 }
             }
         }

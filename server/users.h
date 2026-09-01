@@ -1,12 +1,15 @@
 #define MAX_USERS 1000
+#define AES_KEY_SIZE 32
 #define MAX_USERNAME 20
+#include "../crypto/crypto.h"
+
 
 struct User
 {
     char username[MAX_USERNAME];
     int socket;
     char chat_with[MAX_USERNAME];
-    unsigned char KEY[65];
+    unsigned char KEY[AES_KEY_SIZE];
 };
 
 extern struct User users[MAX_USERS];

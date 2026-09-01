@@ -8,6 +8,7 @@
 
 #include "users.h"
 #include "dh.h"
+#include "services.h"
 
 struct User users[MAX_USERS];
 int user_count = 0;
@@ -74,11 +75,16 @@ int register_client(int c)
     char hexkey[513];
     strcpy(hexkey, BN_bn2hex(KEY));
 
-    unsigned char hashed_key[SHA256_DIGEST_LENGTH];
+    unsigned char hashed_key[AES_KEY_SIZE];
 
-    SHA256((unsigned char*)hexkey, strlen(hexkey), hashed_key);
-
+    // SHA256((unsigned char*)hexkey, strlen(hexkey), hashed_key);
+    if(derive_aes_key(KEY, hashed_key) != 1){
+        printf("Failed to derive ase key");
+        return 0;
+    }
     printf("\n\n");
+
+    printf("[SERVER] AES KEY: ");
 
     for (int i = 0; i < SHA256_DIGEST_LENGTH; i++)
     {
@@ -92,14 +98,39 @@ int register_client(int c)
     {
         sprintf(response, "Enter Name:\t");
 
-        write(c, response, strlen(response));
+        // write(c, response, strlen(response));
+        send_command(c, response, hashed_key); 
 
-        int n = read(c, username, MAX_USERNAME - 1);
+        // int n = read(c, username, MAX_USERNAME - 1);
+
+        // if (n <= 0)
+        //     return 0;
+
+        // username[n] = '\0';
+        unsigned char encrypted[2048];
+        unsigned char decrypted[2048];
+
+        int n = read(c, encrypted, sizeof(encrypted));
 
         if (n <= 0)
             return 0;
 
-        username[n] = '\0';
+        int plaintext_len = decrypt_message(
+            encrypted,
+            n,
+            hashed_key,
+            decrypted
+        );
+
+        if (plaintext_len < 0)
+        {
+            printf("[SERVER] Registration username decryption failed\n");
+            return 0;
+        }
+
+        decrypted[plaintext_len] = '\0';
+
+        strcpy(username, (char *)decrypted);
 
         int name_taken = 0;
 
@@ -128,8 +159,8 @@ int register_client(int c)
 
         users[user_count].chat_with[0] = '\0';
 
-        strcpy(users[user_count].KEY, hashed_key);
-
+        // strcpy(users[user_count].KEY, hashed_key);
+        memcpy(users[user_count].KEY, hashed_key, AES_KEY_SIZE);
         sprintf(response,
                 "User Registration Successful.\n"
                 "User registered with name: %s"
