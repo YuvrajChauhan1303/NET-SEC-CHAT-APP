@@ -18,16 +18,46 @@
 void send_command(int s, char *buf, unsigned char *aes_key)
 {
     
-    unsigned char encrypted[];
+    unsigned char encrypted[2048];
     int encrypted_len = encrypt_message((unsigned char *)buf, strlen(buf), aes_key, encrypted);
     
-    printf("Encryp. message before sending\n]n");
-    for (int i = 0; i < encrypted_len; i++)
-    {
-        printf("%02x", encrypted[i]);
+    if (encrypted_len < 0){
+        printf("Encryption failed\n");
+        return;
     }
+    // printf("Encryptes message: ");
+    // for (int i = 0; i < encrypted_len; i++)
+    // {
+    //     printf("%02x", encrypted[i]);
+    // }
     printf("\n");
     write(s, encrypted, encrypted_len);
+}
+
+void receive_command(int s, unsigned char*aes_key)
+{
+    unsigned char encrypted_msg[2048];
+    unsigned char decrypted_msg[2048];
+
+    // printf("DEBUG: waiting for server message...\n");
+
+    int n  = read(s, encrypted_msg, sizeof(encrypted_msg));
+
+    if( n <= 0 ){
+        return;
+    }
+
+    int plaintext_len = decrypt_message(encrypted_msg, n, aes_key,decrypted_msg );
+
+    if(plaintext_len < 0){
+        printf("Decryption Failed");
+        return ;
+    }
+
+    decrypted_msg[plaintext_len] = '\0';
+    printf("Message : %s", decrypted_msg);
+    printf("\n");
+    fflush(stdout);
 }
 
 int main(int argc, char *argv[])
@@ -97,8 +127,11 @@ int main(int argc, char *argv[])
     strcpy(buf, BN_bn2hex(share));
 
     write(s, buf, 513);
+    printf("DEBUG: client share sent");
 
     int n = read(s, buf, sizeof(buf) - 1);
+
+    printf("DEBUG: server returned");
 
     if (n <= 0)
         return 1;
@@ -149,41 +182,29 @@ int main(int argc, char *argv[])
     
     // printf("\n\n");
 
-    n = read(s, buf, sizeof(buf) - 1);
+    // n = read(s, buf, sizeof(buf) - 1);
 
-    if (n <= 0)
-        return 1;
+    // if (n <= 0)
+    //     return 1;
 
-    buf[n] = '\0';
+    // buf[n] = '\0';
 
-    printf("Server: %s", buf);
+    printf("\n\nEnter your name: ");
+    receive_command(s, aes_key);
 
     fgets(buf, sizeof(buf), stdin);
     buf[strlen(buf) - 1] = '\0';
 
+    
     send_command(s, buf, aes_key);
 
-    n = read(s, buf, sizeof(buf) - 1);
-
-    if (n <= 0)
-        return 1;
-
-    buf[n] = '\0';
-
-    printf("Server: %s", buf);
+    receive_command(s, aes_key);
 
     if (fork() == 0)
     {
         while (1)
         {
-            n = read(s, buf, sizeof(buf) - 1);
-
-            if (n <= 0)
-                break;
-
-            buf[n] = '\0';
-
-            printf("Server:\n\n%s\n", buf);
+           receive_command(s, aes_key);;
         }
     }
     else

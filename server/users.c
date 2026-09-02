@@ -92,11 +92,14 @@ int register_client(int c)
     }
 
     printf("\n\n");
+    printf("\n---------------------------------------------------------------------------------\n\n");
+
 
 
     while (1)
     {
-        sprintf(response, "Enter Name:\t");
+        printf("Enter name: ");
+        sprintf(response, "\t");
 
         // write(c, response, strlen(response));
         send_command(c, response, hashed_key); 
@@ -148,7 +151,7 @@ int register_client(int c)
             sprintf(response,
                     "Username already taken. Please choose another name.\n");
 
-            write(c, response, strlen(response));
+            send_command(c, response, hashed_key);
 
             continue;
         }
@@ -168,7 +171,7 @@ int register_client(int c)
                 users[user_count].username,
                 user_count + 1);
 
-        write(c, response, strlen(response));
+        send_command(c, response, hashed_key);
 
         printf("[SERVER] Registered %s on socket %d\n",
                users[user_count].username,

@@ -4,6 +4,8 @@
 
 #include "users.h"
 #include "chat.h"
+#include "../crypto/crypto.h"
+#include "services.h"
 
 void get_chat_username(char *buf, char *username)
 {
@@ -43,9 +45,9 @@ void service_chat(int user_index, char *buf)
                 "User %s not found.\n",
                 target);
 
-        write(users[user_index].socket,
-              response,
-              strlen(response));
+        send_command(users[user_index].socket,
+             response,
+             users[user_index].KEY);
 
         return;
     }
@@ -58,9 +60,9 @@ void service_chat(int user_index, char *buf)
             "Now chatting with %s\n",
             target);
 
-    write(users[user_index].socket,
-          response,
-          strlen(response));
+    send_command(users[user_index].socket,
+             response,
+             users[user_index].KEY);
 
     printf("[SERVER] %s is now chatting with %s\n",
            users[user_index].username,
@@ -74,9 +76,9 @@ void service_message(int user_index, char *buf)
         char response[] =
             "No chat selected. Use /chat <username>\n";
 
-        write(users[user_index].socket,
-              response,
-              strlen(response));
+        send_command(users[user_index].socket,
+             response,
+             users[user_index].KEY);
 
         return;
     }
@@ -92,10 +94,10 @@ void service_message(int user_index, char *buf)
                     "%s: %s",
                     users[user_index].username,
                     buf);
+            printf("[SERVER] Sending encrypted message to %s\n",
+       users[i].username);
 
-            write(users[i].socket,
-                  message,
-                  strlen(message));
+            send_command(users[i].socket,message,users[i].KEY);
 
             printf("[SERVER] %s -> %s: %s\n",
                    users[user_index].username,
@@ -109,9 +111,9 @@ void service_message(int user_index, char *buf)
     char response[] =
         "The selected user is no longer connected.\n";
 
-    write(users[user_index].socket,
-          response,
-          strlen(response));
+    send_command(users[user_index].socket,
+             response,
+             users[user_index].KEY);
 
     users[user_index].chat_with[0] = '\0';
 }
@@ -144,9 +146,9 @@ void service_chat_username(int user_index, char *username)
                 "User %s not found.\n",
                 username);
 
-        write(users[user_index].socket,
-              response,
-              strlen(response));
+        send_command(users[user_index].socket,
+             response,
+             users[user_index].KEY);
 
         printf("[SERVER] User %s not found\n",
                username);

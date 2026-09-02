@@ -64,6 +64,7 @@ int main()
             {
                 printf("[SERVER] Registration complete.\n");
             }
+            printf("\n------------------------------------------------------------\n\n");
         }
 
         for (int i = 0; i < user_count; i++)
@@ -77,11 +78,12 @@ int main()
 
                 int n = read(client_socket, encrypted, sizeof(encrypted));
 
-                printf("[SERVER] Received encrypted packet: ");
+                printf("\n[SERVER] Received encrypted packet: ");
                 for (int j = 0; j < n; j++)
                 {
                     printf("%02x", encrypted[j]);
                 }
+                printf("\n");
                 printf("\n");
 
                 if (n <= 0)
@@ -100,7 +102,7 @@ int main()
                 plaintext[plaintext_len] = '\0';
 
                 printf("[CLIENT %s] %s\n",users[i].username,plaintext);
-
+                printf("\n");
                 // printf("[CLIENT %s] %s\n",
                 //     users[i].username,
                 //     buf);
