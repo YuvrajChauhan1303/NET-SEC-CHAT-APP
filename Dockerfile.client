@@ -8,6 +8,6 @@ COPY client /app/client
 
 RUN mkdir -p client-key
 
-RUN gcc client/client.c client/dh.c client/aes.c client/services.c client/cert.c -o client/client -lcrypto
+RUN gcc client/client.c client/dh.c client/aes.c client/services.c client/cert.c client/rsa.c client/e2e.c -o client/client -lcrypto
 
 CMD ["./client/client"]

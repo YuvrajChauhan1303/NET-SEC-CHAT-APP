@@ -1,23 +1,28 @@
-OPENSSL = /opt/homebrew/opt/openssl@3
+ca:
+	docker compose up cert-auth
 
-CFLAGS = -I$(OPENSSL)/include
+server-only:
+	docker compose up server
 
-LDFLAGS = -L$(OPENSSL)/lib
+client-only:
+	docker build -t chat-client -f Dockerfile.client .
+	docker compose run --rm client ./client/client server 8080
 
-LIBS = -lcrypto
+build:
+	docker build -t chat-ca -f Dockerfile.ca .
+	docker build -t chat-server -f Dockerfile.server .
+	docker build -t chat-client -f Dockerfile.client .
 
-all: client_bin server_bin cert_auth
+down:
+	docker compose down --remove-orphans
 
-client_bin: client/client.c client/dh.c client/aes.c client/services.c client/cert.c
-	gcc $(CFLAGS) client/client.c client/dh.c client/aes.c client/services.c client/cert.c -o client/client $(LDFLAGS) $(LIBS)
+restart:
+	docker compose down --remove-orphans
+	docker compose up cert-auth server
 
-server_bin: server/server.c server/services.c server/users.c server/chat.c server/dh.c server/aes.c server/cert.c
-	gcc $(CFLAGS) server/server.c server/services.c server/users.c server/chat.c server/dh.c server/aes.c server/cert.c -o server/server $(LDFLAGS) $(LIBS)
-
-cert_auth: cert-auth/cert-auth.c cert-auth/services.c
-	gcc $(CFLAGS) cert-auth/cert-auth.c cert-auth/services.c -o cert-auth/ca $(LDFLAGS) $(LIBS)
-
-clean:
-	rm -f client/client server/server cert-auth/ca
-	rm -f server/server-key/server.key server/server-key/server.crt
-	rm -f cert-auth/ca-key/ca.key cert-auth/ca-key/ca.crt
+rebuild:
+	docker compose down --remove-orphans
+	docker build -t chat-ca -f Dockerfile.ca .
+	docker build -t chat-server -f Dockerfile.server .
+	docker build -t chat-client -f Dockerfile.client .
+	docker compose up cert-auth server

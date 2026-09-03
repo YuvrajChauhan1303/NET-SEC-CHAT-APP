@@ -187,9 +187,9 @@ int register_client(int c)
 
     while (1)
     {
-        strcpy(response, "Enter Name:\t");
+        // strcpy(response, "Enter Name:\t");
 
-        send_command(c, response, hashed_key);
+        // send_command(c, response, hashed_key);
 
         int plaintext_len = receive_command(c, hashed_key, username, sizeof(username));
 
