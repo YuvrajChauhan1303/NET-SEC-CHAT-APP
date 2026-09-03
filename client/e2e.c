@@ -220,6 +220,9 @@ int e2e_create_ack(const char *peer, char *packet, int packet_size, BN_CTX *ctx)
 
     derive_aes_key(shared_secret, aes_key);
 
+    printf("E2E key fingerprint for %s: ", peer);
+    print_key_fingerprint(aes_key);
+
     e2e_save_key(peer, aes_key);
 
     share_hex = BN_bn2hex(share);
@@ -262,6 +265,9 @@ int e2e_process_ack(const char *peer, const char *share, BN_CTX *ctx)
     secret_maker(peer_share, secret, shared_secret, ctx);
 
     derive_aes_key(shared_secret, aes_key);
+
+    printf("E2E key fingerprint for %s: ", peer);
+    print_key_fingerprint(aes_key);
 
     e2e_save_key(peer, aes_key);
 
