@@ -16,7 +16,7 @@
 - [x] implement Diffie-Hellman key exchange manually using modular exponentiation.
 - [x] use a standard published prime group (RFC 3526 etc.).
 - [x] separate DH exchange for every client-server connection.
-- [ ] derive AES key from DH shared secret using a hash.
+- [x] derive AES key from DH shared secret using a hash.
 - [ ] understand + mention in report why we hash the DH secret.
 - [ ] encrypt all client-server communication using AES-GCM.
 - [ ] encrypt login/registration messages too.

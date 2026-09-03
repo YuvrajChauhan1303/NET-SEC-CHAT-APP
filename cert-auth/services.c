@@ -62,6 +62,12 @@ void save_ca_key(EVP_PKEY *key)
 
     f = fopen("cert-key/cert-auth.key", "wb");
 
+    if(f ==NULL)
+    {
+        perror("fopen ");
+        return;
+    }
+
     PEM_write_PrivateKey_ex(f, key, NULL, NULL, 0, NULL, NULL, NULL, NULL);
 
     fclose(f);
@@ -72,6 +78,11 @@ void save_ca_certificate(X509 *cert)
     FILE *f;
 
     f = fopen("cert-key/cert-auth.crt", "wb");
+    if(f ==NULL)
+    {
+        perror("fopen ");
+        return;
+    }
 
     PEM_write_X509(f, cert);
 

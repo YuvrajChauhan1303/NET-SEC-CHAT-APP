@@ -53,6 +53,11 @@ void save_server_key(EVP_PKEY *server_key)
     FILE *f;
 
     f = fopen("server-key/server.key", "wb");
+    if(f ==NULL)
+    {
+        perror("fopen ");
+        return;
+    }
 
     PEM_write_PrivateKey(f, server_key, NULL, NULL, 0, NULL, NULL);
 
@@ -64,7 +69,11 @@ void save_server_certificate(X509 *server_cert)
     FILE *f;
 
     f = fopen("server-key/server.crt", "wb");
-
+    if(f ==NULL)
+    {
+        perror("fopen ");
+        return;
+    }
     PEM_write_X509(f, server_cert);
 
     fclose(f);
