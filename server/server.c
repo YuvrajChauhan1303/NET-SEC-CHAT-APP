@@ -31,7 +31,7 @@ int main()
 
     listen(s, 10);
 
-    printf("[SERVER] Server Initialized. Listening for requests.\n\n");
+    printf("SERVER Server Initialized. Listening for requests.\n\n");
 
     while (1)
     {
@@ -57,12 +57,12 @@ int main()
         {
             c = accept(s, NULL, NULL);
 
-            printf("[SERVER] New connection. Socket: %d\n", c);
+            printf("SERVER New connection. Socket: %d\n", c);
             init_dh_params();
 
             if (register_client(c))
             {
-                printf("[SERVER] Registration complete.\n");
+                printf("SERVER Registration complete.\n");
             }
             printf("\n------------------------------------------------------------\n\n");
         }
@@ -78,11 +78,11 @@ int main()
 
                 int n = read(client_socket, encrypted, sizeof(encrypted));
 
-                printf("\n[SERVER] Received encrypted packet: ");
-                for (int j = 0; j < n; j++)
-                {
-                    printf("%02x", encrypted[j]);
-                }
+                // printf("\nSERVER:  Received encrypted packet: ");
+                // for (int j = 0; j < n; j++)
+                // {
+                //     printf("%02x", encrypted[j]);
+                // }
                 printf("\n");
                 printf("\n");
 
@@ -96,12 +96,12 @@ int main()
                 
                 if (plaintext_len < 0)
                 {
-                    printf("[SERVER] Decryption failed\n");
+                    printf("SERVER Decryption failed\n");
                     continue;
                 }
                 plaintext[plaintext_len] = '\0';
 
-                printf("[CLIENT %s] %s\n",users[i].username,plaintext);
+                printf("CLIENT %s: %s\n",users[i].username,plaintext);
                 printf("\n");
                 // printf("[CLIENT %s] %s\n",
                 //     users[i].username,
@@ -109,7 +109,7 @@ int main()
 
                 if (!strcmp((char *)plaintext, "/who"))
                 {
-                    printf("[SERVER] %s requested /who\n",
+                    printf("SERVER %s requested /who\n",
                         users[i].username);
 
                     service_who(client_socket);

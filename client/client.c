@@ -119,7 +119,12 @@ int main(int argc, char *argv[])
     BN_print_fp(stdout, share);
     printf("\n");
 
-    connect(s, res->ai_addr, res->ai_addrlen);
+    if(connect(s, res->ai_addr, res->ai_addrlen) <0){
+        perror("connection error");
+        return 0;
+    }
+    // printf("DEBUG Connected to mitm");
+
     freeaddrinfo(res);
 
     char buf[1000];

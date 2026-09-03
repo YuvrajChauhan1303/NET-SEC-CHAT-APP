@@ -10,7 +10,7 @@
 #include "../crypto/crypto.h"
 
 
-void dh_client(int c, unsigned char *client_aes_key)
+void dh_client(int client_socket, unsigned char *client_aes_key)
 {
     BN_CTX *ctx = BN_CTX_new();
 
@@ -19,7 +19,7 @@ void dh_client(int c, unsigned char *client_aes_key)
     BIGNUM *secret = BN_new();
     BIGNUM *client_public = BN_new();
 
-    char buf[513];
+    char buf[514];
     char x[513];
 
     char hexa[] = {
@@ -39,7 +39,7 @@ void dh_client(int c, unsigned char *client_aes_key)
     BN_print_fp(stdout, client_share);
     printf("\n");
 
-    int n = read(c, buf, sizeof(buf) - 1);
+    int n = read(client_socket, buf, sizeof(buf) - 1);
 
     buf[n] = '\0';
 
@@ -47,21 +47,21 @@ void dh_client(int c, unsigned char *client_aes_key)
 
     char *share = BN_bn2hex(client_share);
 
-    write(c, share, strlen(share));
+    write(client_socket, share, strlen(share));
 
     OPENSSL_free(share);
 
     
 
     secret_maker(client_public, client_sec, secret, ctx);
-    printf("[MITM] Client-side shared secret:\n");
+    printf("MITM Client-side shared secret:\n");
     BN_print_fp(stdout, secret);
     printf("\n");
 
 
     derive_aes_key(secret, client_aes_key);
 
-    printf("[MITM] Client AES key: ");
+    printf("MITM Client AES key: ");
     print_hex("", client_aes_key, AES_KEY_SIZE);
 
 
@@ -137,7 +137,7 @@ void dh_server(int server_socket, unsigned char *server_aes_key)
 }
 
 int main(){
-    int s,c;
+    int s,client_socket;
     int server_socket;
 
     struct sockaddr_in addr = {0};
@@ -157,13 +157,15 @@ int main(){
     addr.sin_port = htons(8000);
     addr.sin_addr.s_addr = INADDR_ANY;
 
+    bind(s, (struct sockaddr*)&addr, sizeof(addr));
+
     listen(s, 10);
 
-    printf("[MITM] Listening for client on port 8000\n\n");
+    printf("MITM Listening for client on port 8000\n\n");
 
-    c = accept(s, NULL, NULL);
+    client_socket = accept(s, NULL, NULL);
 
-    printf("[MITM] Client connected. Socket: %d\n", c);
+    printf("MIT Client connected. Socket: %d\n", client_socket);
 
     server_socket = socket(AF_INET, SOCK_STREAM, 0);
 
@@ -178,8 +180,9 @@ int main(){
 
     init_dh_params();
 
-    dh_client(c, client_aes_key);
     printf("Starting DH with client\n");
+    dh_client(client_socket, client_aes_key);
+
     printf("Starting DH with server\n");
 
     dh_server(server_socket, server_aes_key);
@@ -190,10 +193,10 @@ int main(){
 
         FD_ZERO(&readfds);
 
-        FD_SET (c, &readfds);
+        FD_SET (client_socket, &readfds);
         FD_SET(server_socket, &readfds);
 
-        int max_fd  = c;
+        int max_fd  = client_socket;
 
         if(server_socket >max_fd){
             max_fd = server_socket;
@@ -201,32 +204,38 @@ int main(){
         }
         select(max_fd +1, &readfds, NULL, NULL, NULL);
 
-        if(FD_ISSET(c, &readfds))
+        if(FD_ISSET(client_socket, &readfds))
         {
             unsigned char encrypted[2048];
             unsigned char plaintext[2048];
             unsigned char encrypted_again[2048];
 
-            int n = read(c, encrypted, sizeof(encrypted));
+            int n = read(client_socket, encrypted, sizeof(encrypted));
 
             if(n <= 0){
                 break;
             }
-            printf("\nReceived packet from Client\n");
+            printf("\n");
 
             int plaintext_len = decrypt_message(encrypted, n, client_aes_key, plaintext);
             if(plaintext_len <0){
-                printf("Decryption failed");
+                printf("Decryption failed\n\n");
                 continue;
             }
 
             plaintext[plaintext_len] = '\0';
-            printf("PLaintext from client: %s", plaintext);
+            printf("PLaintext from client: %s\n", plaintext);
 
             int encrypted_len = encrypt_message(plaintext, plaintext_len, server_aes_key, encrypted_again);
 
-            write(server_socket, encrypted_again, encrypted_len);
+            // printf("Encrypted packets, sending to the server:");
+            // for (int j = 0; j < n; j++)
+            //     {
+            //         printf("%02x", encrypted_again[j]);
+            //     }
 
+            write(server_socket, encrypted_again, encrypted_len);
+            fflush(stdout);
         }
 
         if(FD_ISSET(server_socket, &readfds))
@@ -240,26 +249,29 @@ int main(){
             if(n <= 0){
                 break;
             }
-            printf("\nReceived packet from Server\n");
+            printf("\n");
 
-            int plaintext_len = decrypt_message(encrypted, n, client_aes_key, plaintext);
+            // printf("Before decrypt\n");
+            int plaintext_len = decrypt_message(encrypted, n, server_aes_key, plaintext);
+            
+            // printf("After decrypt\n");
             if(plaintext_len <0){
                 printf("Decryption failed");
                 continue;
             }
 
             plaintext[plaintext_len] = '\0';
-            printf("PLaintext from Server: %s", plaintext);
+            printf("PLaintext from Server: %s\n", plaintext);
 
-            int encrypted_len = encrypt_message(plaintext, plaintext_len, server_aes_key, encrypted_again);
+            int encrypted_len = encrypt_message(plaintext, plaintext_len, client_aes_key, encrypted_again);
 
-            write(c, encrypted_again, encrypted_len);
-
+            write(client_socket, encrypted_again, encrypted_len);
+            fflush(stdout);
         }
 
 
     }
-    close(c);
+    close(client_socket);
     close(server_socket);
     free_dh_params();
     return 0;
