@@ -6,10 +6,9 @@
 #include <netinet/in.h>
 #include <unistd.h>
 #include <sys/select.h>
-
+#include <netdb.h>
 #include <openssl/evp.h>
 #include <openssl/x509.h>
-
 #include "users.h"
 #include "chat.h"
 #include "services.h"
@@ -26,49 +25,85 @@ int main()
     int s, c;
     struct sockaddr_in addr = {0};
 
+    printf("1\n");
+    fflush(stdout);
+
     server_key = generate_server_key();
+
+    printf("2\n");
+    fflush(stdout);
+
     save_server_key(server_key);
+
+    printf("3\n");
+    fflush(stdout);
 
     csr = generate_server_csr(server_key);
 
+    printf("4\n");
+    fflush(stdout);
+
     s = socket(AF_INET, SOCK_STREAM, 0);
+
+    printf("5\n");
+    fflush(stdout);
 
     addr.sin_family = AF_INET;
     addr.sin_port = htons(8080);
     addr.sin_addr.s_addr = INADDR_ANY;
 
+    printf("6\n");
+    fflush(stdout);
+
     int ca = socket(AF_INET, SOCK_STREAM, 0);
 
+    printf("7\n");
+    fflush(stdout);
+
     struct sockaddr_in ca_addr;
+    struct hostent *host = gethostbyname("cert-auth");
+
+    printf("8\n");
+    fflush(stdout);
+
     ca_addr.sin_family = AF_INET;
-    ca_addr.sin_addr.s_addr = INADDR_ANY;
+    memcpy(&ca_addr.sin_addr, host->h_addr, host->h_length);
     ca_addr.sin_port = htons(8081);
 
+    printf("9\n");
+    fflush(stdout);
+
     connect(ca, (struct sockaddr *)&ca_addr, sizeof(ca_addr));
+
+    printf("10\n");
+    fflush(stdout);
 
     int csr_len = i2d_X509_REQ(csr, NULL);
 
     unsigned char *csr_data = malloc(csr_len);
-
     unsigned char *p = csr_data;
 
     i2d_X509_REQ(csr, &p);
 
     uint32_t request = 2;
+    uint32_t network_csr_len = htonl(csr_len);
 
-    write(ca, &request, sizeof(request));
-    write(ca, &csr_len, sizeof(csr_len));
-    write(ca, csr_data, csr_len);
+    write_all(ca, &request, sizeof(request));
+    write_all(ca, &network_csr_len, sizeof(network_csr_len));
+    write_all(ca, csr_data, csr_len);
 
     free(csr_data);
 
     uint32_t cert_len;
+    uint32_t network_cert_len;
 
-    read(ca, &cert_len, sizeof(cert_len));
+    read_all(ca, &network_cert_len, sizeof(network_cert_len));
+
+    cert_len = ntohl(network_cert_len);
 
     unsigned char *cert_data = malloc(cert_len);
 
-    read(ca, cert_data, cert_len);
+    read_all(ca, cert_data, cert_len);
 
     const unsigned char *q = cert_data;
 
@@ -83,6 +118,7 @@ int main()
     X509_REQ_free(csr);
 
     bind(s, (struct sockaddr *)&addr, sizeof(addr));
+
     listen(s, 10);
 
     printf("[SERVER] Server Initialized. Listening for requests.\n\n");
@@ -115,32 +151,29 @@ int main()
             int send_cert_len = i2d_X509(server_cert, NULL);
 
             unsigned char *send_cert_data = malloc(send_cert_len);
-
             unsigned char *r = send_cert_data;
 
             i2d_X509(server_cert, &r);
 
-            uint32_t len = send_cert_len;
+            uint32_t len = htonl(send_cert_len);
 
-            write(c, &len, sizeof(len));
-
-            write(c, send_cert_data, send_cert_len);
+            write_all(c, &len, sizeof(len));
+            write_all(c, send_cert_data, send_cert_len);
 
             free(send_cert_data);
 
             unsigned char challenge[32];
 
-            read(c, challenge, 32);
+            read_all(c, challenge, sizeof(challenge));
 
             unsigned char signature[256];
 
             int signature_len = sign_challenge(server_key, challenge, 32, signature);
 
-            uint32_t signature_len_net = signature_len;
+            uint32_t signature_len_net = htonl(signature_len);
 
-            write(c, &signature_len_net, sizeof(signature_len_net));
-
-            write(c, signature, signature_len);
+            write_all(c, &signature_len_net, sizeof(signature_len_net));
+            write_all(c, signature, signature_len);
 
             init_dh_params();
 
@@ -203,6 +236,7 @@ int main()
     }
 
     close(s);
+
     free_dh_params();
 
     X509_free(server_cert);

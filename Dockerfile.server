@@ -1,11 +1,15 @@
 FROM ubuntu:24.04
 
-RUN apt update && apt install -y gcc libssl-dev
+RUN apt-get update && apt-get install -y gcc libssl-dev
 
 WORKDIR /app
 
-COPY server/ /app/server/
+COPY server /app/server
 
-RUN gcc server/server.c server/services.c server/chat.c server/users.c server/dh.c -o server/server -lcrypto
+RUN mkdir -p server-key
+
+RUN gcc server/server.c server/services.c server/users.c server/chat.c server/dh.c server/aes.c server/cert.c -o server/server -lcrypto
+
+EXPOSE 8080
 
 CMD ["./server/server"]

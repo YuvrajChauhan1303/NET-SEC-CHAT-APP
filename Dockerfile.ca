@@ -1,0 +1,15 @@
+FROM ubuntu:24.04
+
+RUN apt-get update && apt-get install -y gcc libssl-dev
+
+WORKDIR /app/cert-auth
+
+COPY cert-auth .
+
+RUN mkdir -p cert-key/users
+
+RUN gcc cert-auth.c services.c -o ca -lcrypto
+
+EXPOSE 8081
+
+CMD ["./ca"]

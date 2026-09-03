@@ -8,21 +8,17 @@
 #include <stdlib.h>
 #include <time.h>
 #include <stdint.h>
-
 #include <openssl/bn.h>
 #include <openssl/x509.h>
 #include <openssl/evp.h>
-
 #include "services.h"
 #include "dh.h"
 #include "aes.h"
 #include "cert.h"
-
 #include "rsa.h"
 
 int main(int argc, char *argv[])
 {
-
     printf("Enter your username: ");
 
     char username[1000];
@@ -36,7 +32,6 @@ int main(int argc, char *argv[])
     save_client_csr(client_csr);
 
     X509 *client_cert = request_signed_certificate(client_csr);
-
     save_client_certificate(client_cert);
 
     X509_free(client_cert);
@@ -45,7 +40,6 @@ int main(int argc, char *argv[])
 
     int s;
     struct addrinfo hints, *res;
-
     char *host = "127.0.0.1";
     char *port = "8080";
 
@@ -75,10 +69,7 @@ int main(int argc, char *argv[])
     BIGNUM *share = BN_new();
 
     char x[513];
-
-    char hexa[] = {
-        '0', '1', '2', '3', '4', '5', '6', '7',
-        '8', '9', 'A', 'B', 'C', 'D', 'E', 'F'};
+    char hexa[] = "0123456789ABCDEF";
 
     srand(time(NULL) ^ getpid());
 
@@ -87,18 +78,9 @@ int main(int argc, char *argv[])
 
     x[512] = '\0';
 
-    // printf("\n\nclient key:\n%s\n\n", x);
-
     BN_hex2bn(&client_sec, x);
 
-    // printf("\n\nclient key (after conv):\n");
-    // BN_print_fp(stdout, client_sec);
-
     sq_mult(client_sec, share, ctx);
-
-    // printf("\n\nclient share:\n");
-    // BN_print_fp(stdout, share);
-    // printf("\n");
 
     connect(s, res->ai_addr, res->ai_addrlen);
 
@@ -107,15 +89,16 @@ int main(int argc, char *argv[])
     printf("[CLIENT] Connected to server.\n");
 
     uint32_t cert_len;
+    uint32_t network_cert_len;
 
-    read(s, &cert_len, sizeof(cert_len));
+    read_all(s, &network_cert_len, sizeof(network_cert_len));
+    cert_len = ntohl(network_cert_len);
 
     unsigned char *cert_data = malloc(cert_len);
 
-    read(s, cert_data, cert_len);
+    read_all(s, cert_data, cert_len);
 
     const unsigned char *p = cert_data;
-
     X509 *server_cert = d2i_X509(NULL, &p, cert_len);
 
     free(cert_data);
@@ -126,19 +109,14 @@ int main(int argc, char *argv[])
     {
         printf("[CLIENT] Server certificate validation failed.\n");
         printf("[CLIENT] Closing connection.\n");
-
         close(s);
-
         X509_free(ca_cert);
         X509_free(server_cert);
-
         BN_free(client_sec);
         BN_free(secret);
         BN_free(share);
         BN_CTX_free(ctx);
-
         free_dh_params();
-
         return 1;
     }
 
@@ -147,15 +125,18 @@ int main(int argc, char *argv[])
     unsigned char challenge[32];
 
     generate_challenge(challenge);
-    write(s, challenge, 32);
+
+    write_all(s, challenge, sizeof(challenge));
 
     uint32_t signature_len;
+    uint32_t network_signature_len;
 
-    read(s, &signature_len, sizeof(signature_len));
+    read_all(s, &network_signature_len, sizeof(network_signature_len));
+    signature_len = ntohl(network_signature_len);
 
     unsigned char signature[256];
 
-    read(s, signature, signature_len);
+    read_all(s, signature, signature_len);
 
     if (!verify_challenge(server_cert, challenge, 32, signature, signature_len))
     {
@@ -170,20 +151,24 @@ int main(int argc, char *argv[])
 
     char *share_hex = BN_bn2hex(share);
 
-    strcpy(buf, share_hex);
+    uint32_t share_len = strlen(share_hex);
+    uint32_t network_share_len = htonl(share_len);
+
+    write_all(s, &network_share_len, sizeof(network_share_len));
+    write_all(s, share_hex, share_len);
 
     OPENSSL_free(share_hex);
 
-    write(s, buf, 513);
+    uint32_t server_share_len;
+    uint32_t network_server_share_len;
 
-    int n = read(s, buf, sizeof(buf) - 1);
+    read_all(s, &network_server_share_len, sizeof(network_server_share_len));
 
-    if (n <= 0)
-        return 1;
+    server_share_len = ntohl(network_server_share_len);
 
-    buf[n] = '\0';
+    read_all(s, buf, server_share_len);
 
-    // printf("Server: %s\n", buf);
+    buf[server_share_len] = '\0';
 
     BIGNUM *server_share = BN_new();
 
@@ -193,49 +178,38 @@ int main(int argc, char *argv[])
 
     secret_maker(server_share, client_sec, KEY, ctx);
 
-    // printf("\n\nkey:\n");
-    // BN_print_fp(stdout, KEY);
-    // printf("\n");
-
     unsigned char aes_key[AES_KEY_SIZE];
 
     derive_aes_key(KEY, aes_key);
 
     printf("\nAES KEY\n");
+
     print_hex("", aes_key, AES_KEY_SIZE);
 
     printf("\n");
+
     print_key_fingerprint(aes_key);
 
     printf("\n");
 
     while (1)
     {
-        // n = receive_command(s, aes_key, buf, sizeof(buf));
-
-        // if (n <= 0)
-        // {
-        //     printf("Connection closed during registration\n");
-        //     close(s);
-        //     return 1;
-        // }
-
-        // printf("Server: %s", buf);
-
-        // if (fgets(buf, sizeof(buf), stdin) == NULL)
-        //     return 1;
-
-        // buf[strcspn(buf, "\n")] = '\0';
-
         strcpy(buf, username);
 
         send_command(s, buf, aes_key);
 
-        n = receive_command(s, aes_key, buf, sizeof(buf));
+        int n = receive_command(s, aes_key, buf, sizeof(buf));
 
-        if (n <= 0)
+        if (n == 0)
         {
-            printf("Connection closed during registration\n");
+            printf("Server closed connection during registration\n");
+            close(s);
+            return 1;
+        }
+
+        if (n < 0)
+        {
+            printf("Failed to receive/decrypt registration response\n");
             close(s);
             return 1;
         }
@@ -253,7 +227,7 @@ int main(int argc, char *argv[])
 
     send_command(s, buf, aes_key);
 
-    n = receive_command(s, aes_key, buf, sizeof(buf));
+    int n = receive_command(s, aes_key, buf, sizeof(buf));
 
     if (n <= 0)
         return 1;
@@ -298,14 +272,12 @@ int main(int argc, char *argv[])
 
     X509_free(ca_cert);
     X509_free(server_cert);
-
     BN_free(client_sec);
     BN_free(secret);
     BN_free(share);
     BN_free(server_share);
     BN_free(KEY);
     BN_CTX_free(ctx);
-
     free_dh_params();
 
     return 0;

@@ -9,17 +9,22 @@
 #include <openssl/pem.h>
 #include <openssl/x509.h>
 #include <openssl/rand.h>
+#include <netdb.h>
+
 #include "cert.h"
 
 X509 *download_ca_certificate()
 {
     int ca;
     struct sockaddr_in ca_addr;
+    struct hostent *host;
 
     ca = socket(AF_INET, SOCK_STREAM, 0);
 
+    host = gethostbyname("cert-auth");
+
     ca_addr.sin_family = AF_INET;
-    ca_addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+    memcpy(&ca_addr.sin_addr, host->h_addr, host->h_length);
     ca_addr.sin_port = htons(8081);
 
     connect(ca, (struct sockaddr *)&ca_addr, sizeof(ca_addr));
@@ -41,6 +46,7 @@ X509 *download_ca_certificate()
     X509 *ca_cert = d2i_X509(NULL, &p, cert_len);
 
     free(cert_data);
+
     close(ca);
 
     return ca_cert;
@@ -56,25 +62,48 @@ int validate_server_certificate(X509 *server_cert, X509 *ca_cert)
 
     result = X509_verify(server_cert, ca_key);
 
+    printf("[CLIENT] X509_verify result: %d\n", result);
+
     EVP_PKEY_free(ca_key);
 
     if (result != 1)
+    {
+        printf("[CLIENT] Server certificate signature verification failed.\n");
         return 0;
+    }
 
-    if (X509_cmp_current_time(X509_get0_notBefore(server_cert)) > 0)
-        return 0;
+    result = X509_cmp_current_time(X509_get0_notBefore(server_cert));
 
-    if (X509_cmp_current_time(X509_get0_notAfter(server_cert)) < 0)
+    printf("[CLIENT] notBefore check: %d\n", result);
+
+    if (result > 0)
+    {
+        printf("[CLIENT] Server certificate is not yet valid.\n");
         return 0;
+    }
+
+    result = X509_cmp_current_time(X509_get0_notAfter(server_cert));
+
+    printf("[CLIENT] notAfter check: %d\n", result);
+
+    if (result < 0)
+    {
+        printf("[CLIENT] Server certificate has expired.\n");
+        return 0;
+    }
 
     X509_NAME_get_text_by_NID(X509_get_subject_name(server_cert), NID_commonName, cn, sizeof(cn));
 
+    printf("[CLIENT] Server certificate CN: %s\n", cn);
+
     if (strcmp(cn, "chat-app-server") != 0)
+    {
+        printf("[CLIENT] Server certificate CN is incorrect.\n");
         return 0;
+    }
 
     return 1;
 }
-
 int generate_challenge(unsigned char *challenge)
 {
     RAND_bytes(challenge, 32);
@@ -221,4 +250,56 @@ X509 *load_client_certificate()
     fclose(f);
 
     return cert;
+}
+
+X509 *request_signed_certificate(X509_REQ *csr)
+{
+    int ca;
+    struct sockaddr_in ca_addr;
+    struct hostent *host;
+
+    ca = socket(AF_INET, SOCK_STREAM, 0);
+
+    host = gethostbyname("cert-auth");
+
+    ca_addr.sin_family = AF_INET;
+    memcpy(&ca_addr.sin_addr, host->h_addr, host->h_length);
+    ca_addr.sin_port = htons(8081);
+
+    connect(ca, (struct sockaddr *)&ca_addr, sizeof(ca_addr));
+
+    uint32_t request = 2;
+
+    write(ca, &request, sizeof(request));
+
+    uint32_t csr_len = i2d_X509_REQ(csr, NULL);
+
+    write(ca, &csr_len, sizeof(csr_len));
+
+    unsigned char *csr_data = malloc(csr_len);
+    unsigned char *p = csr_data;
+
+    i2d_X509_REQ(csr, &p);
+
+    write(ca, csr_data, csr_len);
+
+    free(csr_data);
+
+    uint32_t cert_len;
+
+    read(ca, &cert_len, sizeof(cert_len));
+
+    unsigned char *cert_data = malloc(cert_len);
+
+    read(ca, cert_data, cert_len);
+
+    const unsigned char *q = cert_data;
+
+    X509 *client_cert = d2i_X509(NULL, &q, cert_len);
+
+    free(cert_data);
+
+    close(ca);
+
+    return client_cert;
 }

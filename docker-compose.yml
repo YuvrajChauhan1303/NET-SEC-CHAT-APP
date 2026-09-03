@@ -1,4 +1,12 @@
 services:
+  cert-auth:
+    image: chat-ca
+    container_name: cert-auth
+    networks:
+      - chat-network
+    stdin_open: true
+    tty: true
+
   server:
     image: chat-server
     container_name: server
@@ -8,6 +16,18 @@ services:
       - chat-network
     stdin_open: true
     tty: true
+    depends_on:
+      - cert-auth
+
+  client:
+    image: chat-client
+    networks:
+      - chat-network
+    stdin_open: true
+    tty: true
+    depends_on:
+      - server
+      - cert-auth
 
 networks:
   chat-network:

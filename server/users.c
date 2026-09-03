@@ -2,12 +2,13 @@
 #include <string.h>
 #include <unistd.h>
 #include <stdlib.h>
+#include <netdb.h>
 #include <time.h>
 #include <openssl/bn.h>
 #include <stdint.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
-
+#include <arpa/inet.h>
 #include "users.h"
 #include "dh.h"
 #include "services.h"
@@ -70,9 +71,21 @@ int register_client(int c)
         return 0;
     }
 
-    size_t share_len = strlen(share_hex);
+    uint32_t share_len = strlen(share_hex);
+    uint32_t network_share_len = htonl(share_len);
 
-    if (write(c, share_hex, share_len) != (ssize_t)share_len)
+    if (write_all(c, &network_share_len, sizeof(network_share_len)) <= 0)
+    {
+        OPENSSL_free(share_hex);
+        BN_free(server_sec);
+        BN_free(secret);
+        BN_free(share);
+        BN_CTX_free(ctx);
+        close(c);
+        return 0;
+    }
+
+    if (write_all(c, share_hex, share_len) <= 0)
     {
         OPENSSL_free(share_hex);
         BN_free(server_sec);
@@ -85,9 +98,10 @@ int register_client(int c)
 
     OPENSSL_free(share_hex);
 
-    int n = read(c, buf, sizeof(buf) - 1);
+    uint32_t client_share_len;
+    uint32_t network_client_share_len;
 
-    if (n <= 0)
+    if (read_all(c, &network_client_share_len, sizeof(network_client_share_len)) <= 0)
     {
         BN_free(server_sec);
         BN_free(secret);
@@ -97,7 +111,29 @@ int register_client(int c)
         return 0;
     }
 
-    buf[n] = '\0';
+    client_share_len = ntohl(network_client_share_len);
+
+    if (client_share_len >= sizeof(buf))
+    {
+        BN_free(server_sec);
+        BN_free(secret);
+        BN_free(share);
+        BN_CTX_free(ctx);
+        close(c);
+        return 0;
+    }
+
+    if (read_all(c, buf, client_share_len) <= 0)
+    {
+        BN_free(server_sec);
+        BN_free(secret);
+        BN_free(share);
+        BN_CTX_free(ctx);
+        close(c);
+        return 0;
+    }
+
+    buf[client_share_len] = '\0';
 
     client_share = BN_new();
 
@@ -132,7 +168,6 @@ int register_client(int c)
     if (derive_aes_key(KEY, hashed_key) != 1)
     {
         printf("[SERVER] AES key derivation failed.\n");
-
         BN_free(server_sec);
         BN_free(secret);
         BN_free(share);
@@ -161,7 +196,6 @@ int register_client(int c)
         if (plaintext_len <= 0)
         {
             printf("[SERVER] Client disconnected during registration.\n");
-
             BN_free(server_sec);
             BN_free(secret);
             BN_free(share);
@@ -294,20 +328,24 @@ void notify_ca_user_quit(const char *username)
 {
     int ca;
     struct sockaddr_in ca_addr;
+    struct hostent *host;
+
     uint32_t request = 4;
     uint32_t username_len = strlen(username);
 
     ca = socket(AF_INET, SOCK_STREAM, 0);
 
+    host = gethostbyname("cert-auth");
+
     ca_addr.sin_family = AF_INET;
-    ca_addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+    memcpy(&ca_addr.sin_addr, host->h_addr, host->h_length);
     ca_addr.sin_port = htons(8081);
 
     connect(ca, (struct sockaddr *)&ca_addr, sizeof(ca_addr));
 
-    write(ca, &request, sizeof(request));
-    write(ca, &username_len, sizeof(username_len));
-    write(ca, username, username_len);
+    write_all(ca, &request, sizeof(request));
+    write_all(ca, &username_len, sizeof(username_len));
+    write_all(ca, username, username_len);
 
     close(ca);
 }
