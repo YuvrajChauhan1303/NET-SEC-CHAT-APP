@@ -4,6 +4,9 @@
 #include <stdlib.h>
 #include <time.h>
 #include <openssl/bn.h>
+#include <stdint.h>
+#include <sys/socket.h>
+#include <netinet/in.h>
 
 #include "users.h"
 #include "dh.h"
@@ -275,6 +278,8 @@ void service_quit(int user_index)
 
     printf("[SERVER] Removing user: %s\n", users[user_index].username);
 
+    notify_ca_user_quit(users[user_index].username);
+
     close(users[user_index].socket);
 
     for (int i = user_index; i < user_count - 1; i++)
@@ -283,4 +288,26 @@ void service_quit(int user_index)
     user_count--;
 
     printf("[SERVER] User removed. Total users: %d\n", user_count);
+}
+
+void notify_ca_user_quit(const char *username)
+{
+    int ca;
+    struct sockaddr_in ca_addr;
+    uint32_t request = 4;
+    uint32_t username_len = strlen(username);
+
+    ca = socket(AF_INET, SOCK_STREAM, 0);
+
+    ca_addr.sin_family = AF_INET;
+    ca_addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+    ca_addr.sin_port = htons(8081);
+
+    connect(ca, (struct sockaddr *)&ca_addr, sizeof(ca_addr));
+
+    write(ca, &request, sizeof(request));
+    write(ca, &username_len, sizeof(username_len));
+    write(ca, username, username_len);
+
+    close(ca);
 }

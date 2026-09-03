@@ -25,3 +25,4 @@ int find_user(char *username);
 void service_who(int c);
 
 void service_quit(int user_index);
+void notify_ca_user_quit(const char *username);

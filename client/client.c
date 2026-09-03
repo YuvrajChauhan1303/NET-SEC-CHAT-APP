@@ -18,8 +18,31 @@
 #include "aes.h"
 #include "cert.h"
 
+#include "rsa.h"
+
 int main(int argc, char *argv[])
 {
+
+    printf("Enter your username: ");
+
+    char username[1000];
+    fgets(username, sizeof(username), stdin);
+    username[strcspn(username, "\n")] = '\0';
+
+    EVP_PKEY *client_key = generate_client_keys();
+    X509_REQ *client_csr = generate_client_csr(client_key, username);
+
+    save_client_key(client_key);
+    save_client_csr(client_csr);
+
+    X509 *client_cert = request_signed_certificate(client_csr);
+
+    save_client_certificate(client_cert);
+
+    X509_free(client_cert);
+    X509_REQ_free(client_csr);
+    EVP_PKEY_free(client_key);
+
     int s;
     struct addrinfo hints, *res;
 
@@ -188,21 +211,23 @@ int main(int argc, char *argv[])
 
     while (1)
     {
-        n = receive_command(s, aes_key, buf, sizeof(buf));
+        // n = receive_command(s, aes_key, buf, sizeof(buf));
 
-        if (n <= 0)
-        {
-            printf("Connection closed during registration\n");
-            close(s);
-            return 1;
-        }
+        // if (n <= 0)
+        // {
+        //     printf("Connection closed during registration\n");
+        //     close(s);
+        //     return 1;
+        // }
 
-        printf("Server: %s", buf);
+        // printf("Server: %s", buf);
 
-        if (fgets(buf, sizeof(buf), stdin) == NULL)
-            return 1;
+        // if (fgets(buf, sizeof(buf), stdin) == NULL)
+        //     return 1;
 
-        buf[strcspn(buf, "\n")] = '\0';
+        // buf[strcspn(buf, "\n")] = '\0';
+
+        strcpy(buf, username);
 
         send_command(s, buf, aes_key);
 

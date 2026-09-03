@@ -5,12 +5,10 @@
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <unistd.h>
-
 #include <openssl/evp.h>
 #include <openssl/pem.h>
 #include <openssl/x509.h>
 #include <openssl/rand.h>
-
 #include "cert.h"
 
 X509 *download_ca_certificate()
@@ -43,7 +41,6 @@ X509 *download_ca_certificate()
     X509 *ca_cert = d2i_X509(NULL, &p, cert_len);
 
     free(cert_data);
-
     close(ca);
 
     return ca_cert;
@@ -104,4 +101,124 @@ int verify_challenge(X509 *server_cert, unsigned char *challenge, int challenge_
     EVP_PKEY_free(server_key);
 
     return result;
+}
+
+EVP_PKEY *generate_client_keys()
+{
+    EVP_PKEY *key = NULL;
+    EVP_PKEY_CTX *ctx;
+
+    ctx = EVP_PKEY_CTX_new_id(EVP_PKEY_RSA, NULL);
+
+    EVP_PKEY_keygen_init(ctx);
+    EVP_PKEY_CTX_set_rsa_keygen_bits(ctx, 2048);
+    EVP_PKEY_keygen(ctx, &key);
+
+    EVP_PKEY_CTX_free(ctx);
+
+    return key;
+}
+
+X509_REQ *generate_client_csr(EVP_PKEY *client_key, const char *username)
+{
+    X509_REQ *csr;
+    X509_NAME *name;
+
+    csr = X509_REQ_new();
+
+    X509_REQ_set_version(csr, 0);
+
+    name = X509_REQ_get_subject_name(csr);
+
+    X509_NAME_add_entry_by_txt(name, "C", MBSTRING_ASC, (unsigned char *)"IN", -1, -1, 0);
+    X509_NAME_add_entry_by_txt(name, "O", MBSTRING_ASC, (unsigned char *)"NET-SEC-CHAT-APP", -1, -1, 0);
+    X509_NAME_add_entry_by_txt(name, "CN", MBSTRING_ASC, (unsigned char *)username, -1, -1, 0);
+
+    X509_REQ_set_pubkey(csr, client_key);
+
+    X509_REQ_sign(csr, client_key, EVP_sha256());
+
+    return csr;
+}
+
+int save_client_key(EVP_PKEY *client_key)
+{
+    FILE *f;
+
+    f = fopen("client-key/client.key", "wb");
+
+    if (f == NULL)
+        return 0;
+
+    PEM_write_PrivateKey(f, client_key, NULL, NULL, 0, NULL, NULL);
+
+    fclose(f);
+
+    return 1;
+}
+
+int save_client_csr(X509_REQ *csr)
+{
+    FILE *f;
+
+    f = fopen("client-key/client.csr", "wb");
+
+    if (f == NULL)
+        return 0;
+
+    PEM_write_X509_REQ(f, csr);
+
+    fclose(f);
+
+    return 1;
+}
+
+int save_client_certificate(X509 *client_cert)
+{
+    FILE *f;
+
+    f = fopen("client-key/client.crt", "wb");
+
+    if (f == NULL)
+        return 0;
+
+    PEM_write_X509(f, client_cert);
+
+    fclose(f);
+
+    return 1;
+}
+
+EVP_PKEY *load_client_key()
+{
+    FILE *f;
+    EVP_PKEY *key;
+
+    f = fopen("client-key/client.key", "rb");
+
+    if (f == NULL)
+        return NULL;
+
+    key = PEM_read_PrivateKey(f, NULL, NULL, NULL);
+
+    fclose(f);
+
+    return key;
+}
+
+X509 *load_client_certificate()
+{
+    FILE *f;
+    X509 *cert;
+
+    f = fopen("client-key/client.crt", "rb");
+
+    if (f == NULL)
+        return NULL;
+
+    cert = PEM_read_X509(f, NULL, NULL, NULL);
+
+    fclose(f);
+
+    return cert;
 }
