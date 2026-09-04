@@ -4,7 +4,6 @@
 #include <netinet/in.h>
 #include <unistd.h>
 #include <sys/select.h>
-
 #include "users.h"
 #include "chat.h"
 #include "services.h"
@@ -31,7 +30,6 @@ int main()
     while (1)
     {
         fd_set readfds;
-
         FD_ZERO(&readfds);
         FD_SET(s, &readfds);
 

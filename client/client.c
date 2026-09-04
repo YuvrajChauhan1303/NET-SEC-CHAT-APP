@@ -8,7 +8,6 @@
 #include <stdlib.h>
 #include <time.h>
 #include <openssl/bn.h>
-
 #include "services.h"
 #include "dh.h"
 #include "aes.h"
@@ -20,8 +19,7 @@ int main(int argc, char *argv[])
 {
     int s;
     struct addrinfo hints, *res;
-
-    char *host = "127.0.0.1";
+    char *host = "server";
     char *port = "8080";
 
     if (argc >= 2)
@@ -65,7 +63,6 @@ int main(int argc, char *argv[])
     }
 
     char x[513];
-
     char hexa[] = {
         '0', '1', '2', '3', '4', '5', '6', '7',
         '8', '9', 'A', 'B', 'C', 'D', 'E', 'F'};
@@ -88,6 +85,7 @@ int main(int argc, char *argv[])
 
     printf("\n\nclient share:\n");
     BN_print_fp(stdout, share);
+
     printf("\n");
 
     if (connect(s, res->ai_addr, res->ai_addrlen) < 0)
@@ -124,9 +122,13 @@ int main(int argc, char *argv[])
     strcpy(buf, share_hex);
     OPENSSL_free(share_hex);
 
-    if (write(s, buf, 513) != 513)
+    write_all(s, buf, 513);
+
+    int n = read_all(s, buf, 513);
+
+    if (n <= 0)
     {
-        printf("Failed to send client share\n");
+        printf("Failed to receive server share\n");
         close(s);
         BN_free(client_sec);
         BN_free(secret);
@@ -136,12 +138,7 @@ int main(int argc, char *argv[])
         return 1;
     }
 
-    int n = read(s, buf, sizeof(buf) - 1);
-
-    if (n <= 0)
-        return 1;
-
-    buf[n] = '\0';
+    buf[512] = '\0';
 
     printf("Server: %s\n", buf);
 
@@ -180,6 +177,7 @@ int main(int argc, char *argv[])
 
     printf("\n\nkey:\n");
     BN_print_fp(stdout, KEY);
+
     printf("\n");
 
     unsigned char aes_key[AES_KEY_SIZE];
@@ -202,7 +200,9 @@ int main(int argc, char *argv[])
     print_hex("", aes_key, AES_KEY_SIZE);
 
     printf("\n");
+
     print_key_fingerprint(aes_key);
+
     printf("\n");
 
     while (1)
@@ -323,7 +323,6 @@ int main(int argc, char *argv[])
     BN_free(server_share);
     BN_free(KEY);
     BN_CTX_free(ctx);
-
     free_dh_params();
 
     return 0;

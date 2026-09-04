@@ -4,7 +4,6 @@
 #include <stdlib.h>
 #include <time.h>
 #include <openssl/bn.h>
-
 #include "users.h"
 #include "dh.h"
 #include "services.h"
@@ -14,6 +13,7 @@
 #define ENCRYPTED_BUFFER_SIZE (BUFFER_SIZE + GCM_IV_SIZE + GCM_TAG_SIZE)
 
 struct User users[MAX_USERS];
+
 int user_count = 0;
 
 int register_client(int c)
@@ -67,9 +67,14 @@ int register_client(int c)
         return 0;
     }
 
-    size_t share_len = strlen(share_hex);
+    char share_buf[513];
 
-    if (write(c, share_hex, share_len) != (ssize_t)share_len)
+    memset(share_buf, '0', 512);
+    share_buf[512] = '\0';
+
+    int share_len = strlen(share_hex);
+
+    if (share_len > 512)
     {
         OPENSSL_free(share_hex);
         BN_free(server_sec);
@@ -80,9 +85,13 @@ int register_client(int c)
         return 0;
     }
 
+    memcpy(share_buf + 512 - share_len, share_hex, share_len);
+
     OPENSSL_free(share_hex);
 
-    int n = read(c, buf, sizeof(buf) - 1);
+    write_all(c, share_buf, 513);
+
+    int n = read_all(c, buf, 513);
 
     if (n <= 0)
     {
@@ -94,7 +103,7 @@ int register_client(int c)
         return 0;
     }
 
-    buf[n] = '\0';
+    buf[512] = '\0';
 
     client_share = BN_new();
 
@@ -137,6 +146,7 @@ int register_client(int c)
         BN_free(KEY);
         BN_CTX_free(ctx);
         close(c);
+
         return 0;
     }
 
@@ -166,6 +176,7 @@ int register_client(int c)
             BN_free(KEY);
             BN_CTX_free(ctx);
             close(c);
+
             return 0;
         }
 
@@ -208,6 +219,7 @@ int register_client(int c)
             BN_free(KEY);
             BN_CTX_free(ctx);
             close(c);
+
             return 0;
         }
 

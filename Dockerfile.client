@@ -1,11 +1,11 @@
 FROM ubuntu:24.04
 
-RUN apt update && apt install -y gcc libssl-dev
+RUN apt-get update && apt-get install -y gcc libssl-dev
 
 WORKDIR /app
 
-COPY client/ /app/client/
+COPY client /app/client
 
-RUN gcc client/client.c client/dh.c -o client/client -lcrypto
+RUN gcc client/client.c client/services.c client/dh.c client/aes.c -o client/client -lcrypto
 
-CMD ["./client/client", "server", "8080"]
+CMD ["./client/client"]

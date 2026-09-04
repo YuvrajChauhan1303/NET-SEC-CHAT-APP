@@ -1,16 +1,16 @@
-OPENSSL = /opt/homebrew/opt/openssl@3
+build:
+	docker build -t chat-server -f Dockerfile.server .
+	docker build -t chat-client -f Dockerfile.client .
 
-CFLAGS = -I$(OPENSSL)/include
-LDFLAGS = -L$(OPENSSL)/lib
-LIBS = -lcrypto
+server-only:
+	docker compose up server
 
-all: client_bin server_bin
+client-only:
+	docker compose run --rm client
 
-client_bin: client/client.c client/dh.c client/aes.c client/services.c
-	gcc $(CFLAGS) client/client.c client/dh.c client/aes.c client/services.c -o client/client $(LDFLAGS) $(LIBS)
+down:
+	docker compose down --remove-orphans
 
-server_bin: server/server.c server/services.c server/users.c server/chat.c server/dh.c server/aes.c
-	gcc $(CFLAGS) server/server.c server/services.c server/users.c server/chat.c server/dh.c server/aes.c -o server/server $(LDFLAGS) $(LIBS)
-
-clean:
-	rm -f client/client server/server
+restart:
+	docker compose down --remove-orphans
+	docker compose up server
