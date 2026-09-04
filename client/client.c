@@ -11,12 +11,45 @@
 #include <openssl/bn.h>
 #include <openssl/x509.h>
 #include <openssl/evp.h>
+#include <pthread.h>
+
 #include "services.h"
 #include "dh.h"
 #include "aes.h"
 #include "cert.h"
 #include "rsa.h"
 #include "e2e.h"
+
+struct e2e_timer_data
+{
+    int s;
+    unsigned char *aes_key;
+    char *current_peer;
+    BN_CTX *ctx;
+};
+
+void *e2e_timer(void *arg)
+{
+    struct e2e_timer_data *data = arg;
+
+    while (1)
+    {
+        sleep(60);
+
+        if (data->current_peer[0] == '\0')
+            continue;
+
+        char packet[E2E_PACKET_SIZE];
+
+        if (e2e_create_init(data->current_peer, packet, sizeof(packet), data->ctx))
+        {
+            send_command(data->s, packet, data->aes_key);
+            printf("\nE2E request automatically sent to %s.\n", data->current_peer);
+        }
+    }
+
+    return NULL;
+}
 
 int main()
 {
@@ -304,84 +337,95 @@ int main()
     {
         char current_peer[100] = "";
 
+        struct e2e_timer_data timer_data;
+        timer_data.s = s;
+        timer_data.aes_key = (char *)aes_key;
+        timer_data.current_peer = current_peer;
+        timer_data.ctx = ctx;
+
+        pthread_t timer_thread;
+        pthread_create(&timer_thread, NULL, e2e_timer, &timer_data);
+
         while (1)
         {
-            if (fgets(buf, sizeof(buf), stdin) == NULL)
-                break;
-
-            buf[strcspn(buf, "\n")] = '\0';
-
-            if (!strncmp(buf, "/e2e ", 5))
             {
-                char *peer = buf + 5;
+                if (fgets(buf, sizeof(buf), stdin) == NULL)
+                    break;
 
-                strcpy(current_peer, peer);
+                buf[strcspn(buf, "\n")] = '\0';
 
-                char packet[E2E_PACKET_SIZE];
-
-                int pending = e2e_has_pending(peer);
-
-                printf("Checking pending request for %s: %d\n", peer, pending);
-
-                if (pending)
+                if (!strncmp(buf, "/e2e ", 5))
                 {
-                    if (e2e_create_ack(peer, packet, sizeof(packet), ctx))
+                    char *peer = buf + 5;
+
+                    strcpy(current_peer, peer);
+
+                    char packet[E2E_PACKET_SIZE];
+
+                    int pending = e2e_has_pending(peer);
+
+                    printf("Checking pending request for %s: %d\n", peer, pending);
+
+                    if (pending)
                     {
-                        send_command(s, packet, aes_key);
-                        printf("E2E ACK sent to %s.\n", peer);
+                        if (e2e_create_ack(peer, packet, sizeof(packet), ctx))
+                        {
+                            send_command(s, packet, aes_key);
+                            printf("E2E ACK sent to %s.\n", peer);
+                        }
                     }
-                }
-                else
-                {
-                    if (e2e_create_init(peer, packet, sizeof(packet), ctx))
+                    else
                     {
-                        send_command(s, packet, aes_key);
-                        printf("E2E INIT sent to %s.\n", peer);
+                        if (e2e_create_init(peer, packet, sizeof(packet), ctx))
+                        {
+                            send_command(s, packet, aes_key);
+                            printf("E2E INIT sent to %s.\n", peer);
+                        }
                     }
-                }
-
-                continue;
-            }
-
-            if (!strcmp(buf, "/quit"))
-            {
-                send_command(s, buf, aes_key);
-
-                close(s);
-
-                return 0;
-            }
-
-            if (current_peer[0] != '\0')
-            {
-                char packet[E2E_PACKET_SIZE];
-
-                if (e2e_encrypt(current_peer, buf, packet, sizeof(packet)))
-                {
-                    send_command(s, packet, aes_key);
 
                     continue;
                 }
+
+                if (!strcmp(buf, "/quit"))
+                {
+                    send_command(s, buf, aes_key);
+
+                    close(s);
+
+                    return 0;
+                }
+
+                if (current_peer[0] != '\0')
+                {
+                    char packet[E2E_PACKET_SIZE];
+
+                    if (e2e_encrypt(current_peer, buf, packet, sizeof(packet)))
+                    {
+                        send_command(s, packet, aes_key);
+
+                        continue;
+                    }
+                }
+
+                send_command(s, buf, aes_key);
             }
-
-            send_command(s, buf, aes_key);
         }
+
+        close(s);
+
+        X509_free(ca_cert);
+        X509_free(server_cert);
+
+        BN_free(client_sec);
+        BN_free(secret);
+        BN_free(share);
+        BN_free(server_share);
+        BN_free(KEY);
+
+        BN_CTX_free(ctx);
+
+        free_dh_params();
+
+        return 0;
     }
-
-    close(s);
-
-    X509_free(ca_cert);
-    X509_free(server_cert);
-
-    BN_free(client_sec);
-    BN_free(secret);
-    BN_free(share);
-    BN_free(server_share);
-    BN_free(KEY);
-
-    BN_CTX_free(ctx);
-
-    free_dh_params();
-
-    return 0;
 }
