@@ -9,4 +9,4 @@ void save_server_key(EVP_PKEY *server_key);
 
 void save_server_certificate(X509 *server_cert);
 
-int sign_challenge(EVP_PKEY *server_key, unsigned char *challenge, int challenge_len, unsigned char *signature);
+int sign_challenge(EVP_PKEY *server_key, unsigned char *challenge, int challenge_len, unsigned char *dh_share, int dh_share_len, unsigned char *signature);

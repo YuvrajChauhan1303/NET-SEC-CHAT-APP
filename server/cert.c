@@ -79,7 +79,7 @@ void save_server_certificate(X509 *server_cert)
     fclose(f);
 }
 
-int sign_challenge(EVP_PKEY *server_key, unsigned char *challenge, int challenge_len, unsigned char *signature)
+int sign_challenge(EVP_PKEY *server_key, unsigned char *challenge, int challenge_len, unsigned char *dh_share, int dh_share_len, unsigned char *signature)
 {
     EVP_MD_CTX *ctx;
     size_t signature_len;
@@ -88,11 +88,11 @@ int sign_challenge(EVP_PKEY *server_key, unsigned char *challenge, int challenge
 
     EVP_DigestSignInit(ctx, NULL, EVP_sha256(), NULL, server_key);
     EVP_DigestSignUpdate(ctx, challenge, challenge_len);
+    EVP_DigestSignUpdate(ctx, dh_share, dh_share_len);
 
     signature_len = 0;
 
     EVP_DigestSignFinal(ctx, NULL, &signature_len);
-
     EVP_DigestSignFinal(ctx, signature, &signature_len);
 
     EVP_MD_CTX_free(ctx);

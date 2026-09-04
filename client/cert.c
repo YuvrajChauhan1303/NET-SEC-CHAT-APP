@@ -55,7 +55,13 @@ int validate_server_certificate(X509 *server_cert, X509 *ca_cert)
     int result;
     char cn[256];
 
+    if (ca_cert == NULL || server_cert == NULL)
+        return 0;
+
     ca_key = X509_get_pubkey(ca_cert);
+
+    if (ca_key == NULL)
+        return 0;
 
     result = X509_verify(server_cert, ca_key);
 
@@ -84,8 +90,7 @@ int generate_challenge(unsigned char *challenge)
 
     return 32;
 }
-
-int verify_challenge(X509 *server_cert, unsigned char *challenge, int challenge_len, unsigned char *signature, int signature_len)
+int verify_challenge(X509 *server_cert, unsigned char *challenge, int challenge_len, unsigned char *dh_share, int dh_share_len, unsigned char *signature, int signature_len)
 {
     EVP_PKEY *server_key;
     EVP_MD_CTX *ctx;
@@ -97,6 +102,7 @@ int verify_challenge(X509 *server_cert, unsigned char *challenge, int challenge_
 
     EVP_DigestVerifyInit(ctx, NULL, EVP_sha256(), NULL, server_key);
     EVP_DigestVerifyUpdate(ctx, challenge, challenge_len);
+    EVP_DigestVerifyUpdate(ctx, dh_share, dh_share_len);
 
     result = EVP_DigestVerifyFinal(ctx, signature, signature_len);
 

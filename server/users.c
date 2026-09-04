@@ -4,11 +4,13 @@
 #include <stdlib.h>
 #include <time.h>
 #include <openssl/bn.h>
+#include <openssl/evp.h>
 
 #include "users.h"
 #include "dh.h"
 #include "services.h"
 #include "aes.h"
+#include "cert.h"
 
 #define BUFFER_SIZE 4096
 #define ENCRYPTED_BUFFER_SIZE (BUFFER_SIZE + GCM_IV_SIZE + GCM_TAG_SIZE)
@@ -16,7 +18,41 @@
 struct User users[MAX_USERS];
 int user_count = 0;
 
-int register_client(int c)
+int read_full(int fd, void *buf, size_t len)
+{
+    size_t total = 0;
+
+    while (total < len)
+    {
+        ssize_t n = read(fd, (unsigned char *)buf + total, len - total);
+
+        if (n <= 0)
+            return -1;
+
+        total += n;
+    }
+
+    return 0;
+}
+
+int write_full(int fd, const void *buf, size_t len)
+{
+    size_t total = 0;
+
+    while (total < len)
+    {
+        ssize_t n = write(fd, (const unsigned char *)buf + total, len - total);
+
+        if (n <= 0)
+            return -1;
+
+        total += n;
+    }
+
+    return 0;
+}
+
+int register_client(int c, EVP_PKEY *server_key, unsigned char *challenge)
 {
     char username[MAX_USERNAME];
     char buf[BUFFER_SIZE];
@@ -67,9 +103,28 @@ int register_client(int c)
         return 0;
     }
 
-    size_t share_len = strlen(share_hex);
+    unsigned char signature[256];
 
-    if (write(c, share_hex, share_len) != (ssize_t)share_len)
+    int signature_len = sign_challenge(server_key, challenge, 32, (unsigned char *)share_hex, strlen(share_hex), signature);
+
+    if (signature_len <= 0)
+    {
+        OPENSSL_free(share_hex);
+        BN_free(server_sec);
+        BN_free(secret);
+        BN_free(share);
+        BN_CTX_free(ctx);
+        close(c);
+        return 0;
+    }
+
+    uint32_t signature_len_net = signature_len;
+    uint32_t share_len_net = strlen(share_hex);
+
+    if (write_full(c, &signature_len_net, sizeof(signature_len_net)) < 0 ||
+        write_full(c, signature, signature_len) < 0 ||
+        write_full(c, &share_len_net, sizeof(share_len_net)) < 0 ||
+        write_full(c, share_hex, share_len_net) < 0)
     {
         OPENSSL_free(share_hex);
         BN_free(server_sec);
@@ -254,9 +309,7 @@ void service_who(int c)
     response[0] = '\0';
 
     for (int i = 0; i < user_count; i++)
-    {
         snprintf(response + strlen(response), sizeof(response) - strlen(response), "%d.\t%s\n", i + 1, users[i].username);
-    }
 
     for (int i = 0; i < user_count; i++)
     {

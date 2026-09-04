@@ -64,11 +64,11 @@ int main()
 
     uint32_t cert_len;
 
-    read(ca, &cert_len, sizeof(cert_len));
+    read_full(ca, &cert_len, sizeof(cert_len));
 
     unsigned char *cert_data = malloc(cert_len);
 
-    read(ca, cert_data, cert_len);
+    read_full(ca, cert_data, cert_len);
 
     const unsigned char *q = cert_data;
 
@@ -132,22 +132,13 @@ int main()
 
             read(c, challenge, 32);
 
-            unsigned char signature[256];
-
-            int signature_len = sign_challenge(server_key, challenge, 32, signature);
-
-            uint32_t signature_len_net = signature_len;
-
-            write(c, &signature_len_net, sizeof(signature_len_net));
-
-            write(c, signature, signature_len);
-
             init_dh_params();
 
-            if (register_client(c))
+            if (register_client(c, server_key, challenge)){
                 printf("[SERVER] Registration complete.\n");
+        
+            }
         }
-
         for (int i = 0; i < user_count; i++)
         {
             int client_socket = users[i].socket;

