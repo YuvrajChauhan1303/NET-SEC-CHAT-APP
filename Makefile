@@ -1,10 +1,16 @@
-all: client_bin server_bin
+build:
+	docker build -t chat-server -f Dockerfile.server .
+	docker build -t chat-client -f Dockerfile.client .
 
-client_bin: client/client.c
-	gcc client/client.c -o client/client
+server-only:
+	docker compose up server
 
-server_bin: server/server.c server/services.c server/users.c server/chat.c
-	gcc server/server.c server/services.c server/users.c server/chat.c -o server/server
+client-only:
+	docker compose run --rm client
 
-clean:
-	rm -f client/client server/server
+down:
+	docker compose down --remove-orphans
+
+restart:
+	docker compose down --remove-orphans
+	docker compose up server

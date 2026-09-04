@@ -4,18 +4,14 @@
 #include <netinet/in.h>
 #include <unistd.h>
 #include <sys/select.h>
-
 #include "users.h"
 #include "chat.h"
 #include "services.h"
 
-
 int main()
 {
     int s, c;
-
     struct sockaddr_in addr = {0};
-
     char buf[100];
 
     s = socket(AF_INET, SOCK_STREAM, 0);
@@ -31,108 +27,88 @@ int main()
     printf("[SERVER] Server Initialized. Listening for requests.\n\n");
 
     while (1)
-{
-    fd_set readfds;
-
-    FD_ZERO(&readfds);
-
-    FD_SET(s, &readfds);
-
-    int max_fd = s;
-
-    for (int i = 0; i < user_count; i++)
     {
-        FD_SET(users[i].socket, &readfds);
+        fd_set readfds;
 
-        if (users[i].socket > max_fd)
-            max_fd = users[i].socket;
-    }
+        FD_ZERO(&readfds);
+        FD_SET(s, &readfds);
 
-    select(max_fd + 1, &readfds, NULL, NULL, NULL);
+        int max_fd = s;
 
-    if (FD_ISSET(s, &readfds))
-    {
-        c = accept(s, NULL, NULL);
-
-        printf("[SERVER] New connection. Socket: %d\n", c);
-
-        if (register_client(c))
+        for (int i = 0; i < user_count; i++)
         {
-            printf("[SERVER] Registration complete.\n");
+            FD_SET(users[i].socket, &readfds);
+
+            if (users[i].socket > max_fd)
+                max_fd = users[i].socket;
         }
-    }
 
-    for (int i = 0; i < user_count; i++)
-    {
-        int client_socket = users[i].socket;
+        select(max_fd + 1, &readfds, NULL, NULL, NULL);
 
-        if (FD_ISSET(client_socket, &readfds))
+        if (FD_ISSET(s, &readfds))
         {
-            int n = read(client_socket,
-                         buf,
-                         sizeof(buf) - 1);
+            c = accept(s, NULL, NULL);
 
-            if (n <= 0)
+            printf("[SERVER] New connection. Socket: %d\n", c);
+
+            if (register_client(c))
             {
-                printf("[SERVER] %s disconnected.\n",
-                       users[i].username);
-
-                service_quit(client_socket,
-                             users[i].username);
-
-                i--;
-
-                continue;
+                printf("[SERVER] Registration complete.\n");
             }
+        }
 
-            buf[n] = '\0';
+        for (int i = 0; i < user_count; i++)
+        {
+            int client_socket = users[i].socket;
 
-            printf("[CLIENT %s] %s\n",
-                   users[i].username,
-                   buf);
-
-            if (!strcmp(buf, "/who"))
+            if (FD_ISSET(client_socket, &readfds))
             {
-                printf("[SERVER] %s requested /who\n",
-                       users[i].username);
+                char *command = read_command(client_socket, buf);
 
-                service_who(client_socket);
-            }
+                if (command == NULL)
+                {
+                    printf("[SERVER] %s disconnected.\n", users[i].username);
+                    service_quit(client_socket, users[i].username);
+                    i--;
+                    continue;
+                }
 
-            else if (!strncmp(buf, "/chat ", 6))
-            {
-                service_chat(i, buf);
-            }
+                printf("[CLIENT %s] %s\n", users[i].username, buf);
 
-            else if (!strcmp(buf, "/quit"))
-            {
-                service_quit(client_socket,
-                             users[i].username);
+                if (!strcmp(buf, "/who"))
+                {
+                    printf("[SERVER] %s requested /who\n", users[i].username);
+                    service_who(client_socket);
+                }
+                else if (!strncmp(buf, "/chat ", 6))
+                {
+                    service_chat(i, buf);
+                }
+                else if (!strcmp(buf, "/quit"))
+                {
+                    service_quit(client_socket, users[i].username);
+                    i--;
+                    continue;
+                }
+                else if (buf[0] == '@')
+                {
+                    char username[MAX_USERNAME];
 
-                i--;
+                    get_username(buf, username);
 
-                continue;
-            }
+                    service_chat_username(i, username);
 
-            else if (buf[0] == '@')
-            {
-                char username[MAX_USERNAME];
+                    char *msg = buf + strlen(username) + 2;
 
-                get_username(buf, username);
-
-                service_chat_username(i, username);
-
-                char *msg = buf + strlen(username) + 2;
-                service_message(i, msg);
-            }
-
-            else
-            {
-                service_message(i, buf);
+                    service_message(i, msg);
+                }
+                else
+                {
+                    service_message(i, buf);
+                }
             }
         }
     }
-}
 
     close(s);
 

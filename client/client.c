@@ -5,18 +5,79 @@
 #include <arpa/inet.h>
 #include <unistd.h>
 #include <netdb.h>
+#include <stdint.h>
+
+void write_all(int s, void *buf, int len)
+{
+    int sent = 0;
+
+    while (sent < len)
+    {
+        int n = write(s, (char *)buf + sent, len - sent);
+
+        if (n <= 0)
+            return;
+
+        sent += n;
+    }
+}
+
+int read_all(int s, void *buf, int len)
+{
+    int received = 0;
+
+    while (received < len)
+    {
+        int n = read(s, (char *)buf + received, len - received);
+
+        if (n <= 0)
+            return n;
+
+        received += n;
+    }
+
+    return received;
+}
 
 void send_command(int s, char *buf)
 {
-    write(s, buf, strlen(buf));
+    uint32_t len = strlen(buf);
+    uint32_t network_len = htonl(len);
+
+    write_all(s, &network_len, sizeof(network_len));
+    write_all(s, buf, len);
+}
+
+int receive_command(int s, char *buf, int size)
+{
+    uint32_t network_len;
+    uint32_t len;
+
+    int n = read_all(s, &network_len, sizeof(network_len));
+
+    if (n <= 0)
+        return n;
+
+    len = ntohl(network_len);
+
+    if (len >= size)
+        return -1;
+
+    n = read_all(s, buf, len);
+
+    if (n <= 0)
+        return n;
+
+    buf[len] = '\0';
+
+    return len;
 }
 
 int main(int argc, char *argv[])
 {
     int s;
     struct addrinfo hints, *res;
-
-    char *host = "127.0.0.1";
+    char *host = "server";
     char *port = "8080";
 
     if (argc >= 2)
@@ -39,12 +100,10 @@ int main(int argc, char *argv[])
 
     char buf[1000];
 
-    int n = read(s, buf, sizeof(buf) - 1);
+    int n = receive_command(s, buf, sizeof(buf));
 
     if (n <= 0)
         return 1;
-
-    buf[n] = '\0';
 
     printf("Server: %s\n", buf);
 
@@ -53,12 +112,10 @@ int main(int argc, char *argv[])
 
     send_command(s, buf);
 
-    n = read(s, buf, sizeof(buf) - 1);
+    n = receive_command(s, buf, sizeof(buf));
 
     if (n <= 0)
         return 1;
-
-    buf[n] = '\0';
 
     printf("Server: %s", buf);
 
@@ -66,12 +123,10 @@ int main(int argc, char *argv[])
     {
         while (1)
         {
-            n = read(s, buf, sizeof(buf) - 1);
+            n = receive_command(s, buf, sizeof(buf));
 
             if (n <= 0)
                 break;
-
-            buf[n] = '\0';
 
             printf("Server:\n\n%s\n", buf);
         }
@@ -88,6 +143,7 @@ int main(int argc, char *argv[])
             if (!strcmp(buf, "/quit"))
             {
                 close(s);
+
                 return 0;
             }
         }

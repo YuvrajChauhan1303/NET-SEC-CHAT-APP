@@ -1,11 +1,11 @@
 FROM ubuntu:24.04
 
-RUN apt update && apt install -y gcc
+RUN apt-get update && apt-get install -y gcc
 
 WORKDIR /app
 
-COPY server/ /app/server/
+COPY server /app/server
 
-RUN gcc server/server.c server/services.c -o server/server
+RUN gcc server/server.c server/services.c server/users.c server/chat.c -o server/server
 
 CMD ["./server/server"]
