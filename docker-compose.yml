@@ -9,14 +9,27 @@ services:
     stdin_open: true
     tty: true
 
-  client:
-    image: chat-client
+  mitm:
+    image: chat-mitm
+    container_name: mitm
+    ports:
+      - "8000:8000"
     networks:
       - chat-network
     stdin_open: true
     tty: true
     depends_on:
       - server
+
+  client:
+    image: chat-client
+    container_name: client
+    networks:
+      - chat-network
+    stdin_open: true
+    tty: true
+    depends_on:
+      - mitm
 
 networks:
   chat-network:

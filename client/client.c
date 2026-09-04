@@ -19,8 +19,8 @@ int main(int argc, char *argv[])
 {
     int s;
     struct addrinfo hints, *res;
-    char *host = "server";
-    char *port = "8080";
+    char *host = "mitm";
+    char *port = "8000";
 
     if (argc >= 2)
         host = argv[1];

@@ -1,0 +1,11 @@
+FROM ubuntu:24.04
+
+RUN apt-get update && apt-get install -y gcc libssl-dev
+
+WORKDIR /app
+
+COPY mitm /app/mitm
+
+RUN gcc mitm/mitm.c mitm/services.c mitm/dh.c mitm/aes.c -o mitm/mitm -lcrypto
+
+CMD ["./mitm/mitm"]
