@@ -17,14 +17,11 @@ X509 *download_ca_certificate()
 {
     int ca;
     struct sockaddr_in ca_addr;
-    struct hostent *host;
 
     ca = socket(AF_INET, SOCK_STREAM, 0);
 
-    host = gethostbyname("cert-auth");
-
     ca_addr.sin_family = AF_INET;
-    memcpy(&ca_addr.sin_addr, host->h_addr, host->h_length);
+    inet_pton(AF_INET, "192.168.56.106", &ca_addr.sin_addr);
     ca_addr.sin_port = htons(8081);
 
     connect(ca, (struct sockaddr *)&ca_addr, sizeof(ca_addr));
@@ -260,10 +257,8 @@ X509 *request_signed_certificate(X509_REQ *csr)
 
     ca = socket(AF_INET, SOCK_STREAM, 0);
 
-    host = gethostbyname("cert-auth");
-
     ca_addr.sin_family = AF_INET;
-    memcpy(&ca_addr.sin_addr, host->h_addr, host->h_length);
+    inet_pton(AF_INET, "192.168.56.106", &ca_addr.sin_addr);
     ca_addr.sin_port = htons(8081);
 
     connect(ca, (struct sockaddr *)&ca_addr, sizeof(ca_addr));
