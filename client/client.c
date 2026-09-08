@@ -12,6 +12,7 @@
 #include <openssl/x509.h>
 #include <openssl/evp.h>
 #include <pthread.h>
+#include <arpa/inet.h>
 
 #include "services.h"
 #include "dh.h"
@@ -79,10 +80,10 @@ int main()
 
     s = socket(AF_INET, SOCK_STREAM, 0);
 
-    host = gethostbyname("server");
+    // host = gethostbyname("server");
 
     server_addr.sin_family = AF_INET;
-    memcpy(&server_addr.sin_addr, host->h_addr, host->h_length);
+    inet_pton(AF_INET, "192.168.56.102", &server_addr.sin_addr);
     server_addr.sin_port = htons(8080);
 
     init_dh_params();

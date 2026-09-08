@@ -67,7 +67,7 @@ int main()
     fflush(stdout);
 
     ca_addr.sin_family = AF_INET;
-    memcpy(&ca_addr.sin_addr, host->h_addr, host->h_length);
+    inet_pton(AF_INET, "192.168.56.106", &ca_addr.sin_addr);
     ca_addr.sin_port = htons(8081);
 
     printf("9\n");
