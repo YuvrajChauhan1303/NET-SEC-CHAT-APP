@@ -58,7 +58,7 @@ int main(int argc, char *argv[])
     int s;
     struct addrinfo hints, *res;
 
-    char *host = "127.0.0.1";
+    char *host = "192.168.56.102";
     char *port = "8080";
 
     if (argc >= 2)
@@ -97,8 +97,7 @@ int main(int argc, char *argv[])
 
     char hexa[] = {
         '0', '1', '2', '3', '4', '5', '6', '7',
-        '8', '9', 'A', 'B', 'C', 'D', 'E', 'F'
-    };
+        '8', '9', 'A', 'B', 'C', 'D', 'E', 'F'};
 
     srand(time(NULL) ^ getpid());
 

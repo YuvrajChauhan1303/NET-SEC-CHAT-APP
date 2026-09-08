@@ -6,7 +6,7 @@
 #include <netinet/in.h>
 #include <unistd.h>
 #include <sys/select.h>
-
+#include <arpa/inet.h>
 #include <openssl/evp.h>
 #include <openssl/x509.h>
 
@@ -41,7 +41,7 @@ int main()
 
     struct sockaddr_in ca_addr;
     ca_addr.sin_family = AF_INET;
-    ca_addr.sin_addr.s_addr = INADDR_ANY;
+    ca_addr.sin_addr.s_addr = inet_addr("192.168.56.106");
     ca_addr.sin_port = htons(8081);
 
     connect(ca, (struct sockaddr *)&ca_addr, sizeof(ca_addr));
@@ -134,9 +134,9 @@ int main()
 
             init_dh_params();
 
-            if (register_client(c, server_key, challenge)){
+            if (register_client(c, server_key, challenge))
+            {
                 printf("[SERVER] Registration complete.\n");
-        
             }
         }
         for (int i = 0; i < user_count; i++)

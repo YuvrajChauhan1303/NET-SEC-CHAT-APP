@@ -5,7 +5,7 @@
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <unistd.h>
-
+#include <arpa/inet.h>cd
 #include <openssl/evp.h>
 #include <openssl/pem.h>
 #include <openssl/x509.h>
@@ -21,7 +21,7 @@ X509 *download_ca_certificate()
     ca = socket(AF_INET, SOCK_STREAM, 0);
 
     ca_addr.sin_family = AF_INET;
-    ca_addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+    ca_addr.sin_addr.s_addr = inet_addr("192.168.56.106");
     ca_addr.sin_port = htons(8081);
 
     connect(ca, (struct sockaddr *)&ca_addr, sizeof(ca_addr));
