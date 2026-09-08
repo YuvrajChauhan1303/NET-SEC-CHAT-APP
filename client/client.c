@@ -46,9 +46,9 @@ int main()
 
     s = socket(AF_INET, SOCK_STREAM, 0);
 
-    s_addr.sin_family = AF_INET;
-    inet_pton(AF_INET, "192.168.56.102", &ca_addr.sin_addr);
-    s_addr.sin_port = htons(8080);
+    server_addr.sin_family = AF_INET;
+    inet_pton(AF_INET, "192.168.56.102", &server_addr.sin_addr);
+    server_addr.sin_port = htons(8080);
 
     init_dh_params();
 
