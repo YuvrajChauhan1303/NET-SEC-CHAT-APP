@@ -28,7 +28,7 @@ int main()
     s = socket(AF_INET, SOCK_STREAM, 0);
 
     addr.sin_family = AF_INET;
-    addr.sin_port = htons();
+    addr.sin_port = htons(8081);
     addr.sin_addr.s_addr = INADDR_ANY;
 
     bind(s, (struct sockaddr *)&addr, sizeof(addr));
