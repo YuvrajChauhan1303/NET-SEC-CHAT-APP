@@ -213,7 +213,7 @@ int main()
     hints.ai_family = AF_INET;
     hints.ai_socktype = SOCK_STREAM;
 
-    if (getaddrinfo("server", "8080", &hints, &res) != 0)
+    if (getaddrinfo("192.168.56.102", "8080", &hints, &res) != 0)
     {
         printf("Failed to resolve server\n");
         close(client_socket);
