@@ -19,7 +19,7 @@ int main(int argc, char *argv[])
 {
     int s;
     struct addrinfo hints, *res;
-    char *host = "mitm";
+    char *host = "192.168.56.107";
     char *port = "8000";
 
     if (argc >= 2)
